@@ -17,3 +17,15 @@
   stroke-width: 3px !important;
   filter: drop-shadow(0 0 6px #38bdf8);
 }
+
+/* Подсветка выделенных в группу нодов и рамки выделения */
+.react-flow__node.selected > div {
+  outline: 2px solid #38bdf8 !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.35) !important;
+}
+
+.react-flow__selection {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border: 1px dashed #38bdf8 !important;
+}

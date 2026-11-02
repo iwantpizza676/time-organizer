@@ -6,6 +6,7 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
+  SelectionMode,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -34,8 +35,13 @@ import {
   CircleDot,
   FolderKanban,
   Zap,
+  MousePointerSquareDashed,
+  Hand,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import { TaskNode, TimeNode, ConditionNode, WeatherNode, NodeCallbacks } from './CustomNodes';
+import { SCENARIO_PRESETS, ScenarioPreset } from './scenarioPresets';
 
 interface User {
   id: string;
@@ -115,11 +121,19 @@ function OrganizerWorkspace({
   const isLoadedRef = useRef(false);
   const saveTimerRef = useRef<any>(null);
 
-  // Состояние таймеров и запуска по каждому сценарию (отображается слева в списке сценариев)
+  // Режим выделения нодов группами (рамкой или перемещение камеры)
+  const [interactionMode, setInteractionMode] = useState<'pan' | 'select'>('select');
+
+  // Модальное окно выбора пустого или заготовленного сценария
+  const [isNewScenarioModalOpen, setIsNewScenarioModalOpen] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('morning_sport_weather');
+  const [customScenarioTitle, setCustomScenarioTitle] = useState<string>('');
+
+  // Состояние таймеров сценариев
   const [scenarioTimers, setScenarioTimers] = useState<Record<string, ScenarioRuntimeState>>({});
   const [tickLog, setTickLog] = useState<string>('Готов к запуску сценария');
 
-  // Вкладка: канвас или таблицы задач
+  // Вкладки
   const [activeTab, setActiveTab] = useState<'canvas' | 'organizer'>('canvas');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntryItem[]>([]);
@@ -170,7 +184,6 @@ function OrganizerWorkspace({
     }
   }, [setNodes]);
 
-  // Обновление полей внутри нода
   const onUpdateNodeData = useCallback(
     (nodeId: string, patch: Record<string, any>) => {
       setNodes((nds) =>
@@ -181,7 +194,6 @@ function OrganizerWorkspace({
     [setNodes]
   );
 
-  // Запись времени из нода задачи
   const onLogTimeFromNode = useCallback(
     async (
       nodeId: string,
@@ -236,7 +248,26 @@ function OrganizerWorkspace({
     [nodes, callbacks]
   );
 
-  // Загрузка конкретного сценария
+  // Количество выделенных сейчас нодов
+  const selectedNodesCount = useMemo(
+    () => nodes.filter((n) => n.selected).length,
+    [nodes]
+  );
+
+  const handleSelectAllNodes = () => {
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
+  };
+
+  const handleDeleteSelectedNodes = () => {
+    const selectedIds = new Set(nodes.filter((n) => n.selected).map((n) => n.id));
+    if (selectedIds.size === 0) return;
+    setNodes((nds) => nds.filter((n) => !selectedIds.has(n.id)));
+    setEdges((eds) =>
+      eds.filter((e) => !selectedIds.has(e.source) && !selectedIds.has(e.target))
+    );
+    setSaveStatus('unsaved');
+  };
+
   const loadScenario = useCallback(
     async (id: string) => {
       isLoadedRef.current = false;
@@ -281,7 +312,6 @@ function OrganizerWorkspace({
     [fetchOrganizerData, setEdges, setNodes, setViewport]
   );
 
-  // Загрузка списка всех сценариев при старте
   useEffect(() => {
     fetch('/api/scenarios', { credentials: 'include' })
       .then((r) => r.json())
@@ -289,7 +319,6 @@ function OrganizerWorkspace({
         const list: ScenarioItem[] = data.scenarios || [];
         setScenarios(list);
 
-        // Инициализируем таймеры для всех сценариев
         const initialTimers: Record<string, ScenarioRuntimeState> = {};
         for (const item of list) {
           initialTimers[item.id] = {
@@ -307,7 +336,6 @@ function OrganizerWorkspace({
     fetchOrganizerData();
   }, [fetchOrganizerData, loadScenario]);
 
-  // Автосохранение графа (позиции, размеры, связи, viewport и состояние таймера)
   const triggerSave = useCallback(() => {
     setSaveStatus('unsaved');
   }, []);
@@ -370,7 +398,6 @@ function OrganizerWorkspace({
     fetchOrganizerData,
   ]);
 
-  // Соединение нодов
   const onConnect = useCallback(
     (params: Connection) => {
       setEdges((eds) =>
@@ -388,7 +415,6 @@ function OrganizerWorkspace({
     [setEdges]
   );
 
-  // Drag & Drop из правой палитры ТОЧНО в координаты курсора на холсте
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.effectAllowed = 'move';
@@ -405,13 +431,11 @@ function OrganizerWorkspace({
       const type = event.dataTransfer.getData('application/reactflow');
       if (!type) return;
 
-      // Переводим экранные координаты курсора в координаты внутри ReactFlow (с учетом зума и панорамирования)
       const flowPos = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
 
-      // Центрируем нод относительно курсора
       const position = {
         x: Math.round(flowPos.x - 115),
         y: Math.round(flowPos.y - 45),
@@ -592,7 +616,6 @@ function OrganizerWorkspace({
     runTickRef.current = runGraphTickLeftToRight;
   }, [runGraphTickLeftToRight]);
 
-  // Ежесекундный таймер обратного отсчета для всех запущенных сценариев в левом меню
   useEffect(() => {
     const timer = setInterval(() => {
       setScenarioTimers((prev) => {
@@ -603,7 +626,6 @@ function OrganizerWorkspace({
           if (!st.isRunning) continue;
           changed = true;
           if (st.remainingSeconds <= 1) {
-            // Если это активный открытый сценарий — запускаем проход графа слева направо
             if (scId === activeScenarioId) {
               runTickRef.current();
             }
@@ -626,7 +648,6 @@ function OrganizerWorkspace({
     return () => clearInterval(timer);
   }, [activeScenarioId]);
 
-  // Переключение запуска/остановки сценария и его таймера
   const toggleScenarioRunning = (scId: string) => {
     setScenarioTimers((prev) => {
       const current = prev[scId] || {
@@ -647,7 +668,6 @@ function OrganizerWorkspace({
     setSaveStatus('unsaved');
   };
 
-  // Изменение интервала до следующего события (в секундах) для активного сценария
   const updateActiveScenarioInterval = (seconds: number) => {
     if (!activeScenarioId) return;
     const clamped = Math.max(3, Math.min(3600, seconds));
@@ -669,23 +689,71 @@ function OrganizerWorkspace({
     setSaveStatus('unsaved');
   };
 
-  // Создание нового сценария
-  const handleCreateScenario = async () => {
+  // Открытие модального окна создания нового сценария
+  const openCreateScenarioModal = () => {
+    const defaultPreset = SCENARIO_PRESETS[1] || SCENARIO_PRESETS[0];
+    setSelectedPresetId(defaultPreset.id);
+    setCustomScenarioTitle(defaultPreset.title);
+    setIsNewScenarioModalOpen(true);
+  };
+
+  // Подтверждение создания сценария (пустого или по жизненному шаблону)
+  const handleConfirmCreateScenario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const preset: ScenarioPreset =
+      SCENARIO_PRESETS.find((p) => p.id === selectedPresetId) || SCENARIO_PRESETS[0];
+    const today = new Date().toISOString().slice(0, 10);
+    const built = preset.buildGraph(today);
+
+    // Делаем уникальные ID нодов, чтобы разные сценарии не конфликтовали
+    const suffix = Date.now().toString().slice(-5);
+    const idMap = new Map<string, string>();
+    const uniqueNodes = built.nodes.map((n) => {
+      const newNodeId = `${n.id}_${suffix}`;
+      idMap.set(n.id, newNodeId);
+      return { ...n, id: newNodeId };
+    });
+    const uniqueEdges = built.edges.map((ed) => ({
+      ...ed,
+      id: `${ed.id}_${suffix}`,
+      source: idMap.get(ed.source) || ed.source,
+      target: idMap.get(ed.target) || ed.target,
+    }));
+
+    const titleToUse =
+      customScenarioTitle.trim() ||
+      (preset.id === 'empty' ? `Сценарий #${scenarios.length + 1}` : preset.title);
+
     const res = await fetch('/api/scenarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ title: `Сценарий #${scenarios.length + 1}` }),
+      body: JSON.stringify({
+        title: titleToUse,
+        graph_data: {
+          nodes: uniqueNodes,
+          edges: uniqueEdges,
+          viewport: built.viewport,
+          isRunning: false,
+          intervalSeconds: built.intervalSeconds,
+        },
+      }),
     });
+
     if (res.ok) {
       const data = await res.json();
       const created: ScenarioItem = data.scenario;
       setScenarios((prev) => [created, ...prev]);
       setScenarioTimers((prev) => ({
         ...prev,
-        [created.id]: { isRunning: false, intervalSeconds: 15, remainingSeconds: 15 },
+        [created.id]: {
+          isRunning: false,
+          intervalSeconds: built.intervalSeconds,
+          remainingSeconds: built.intervalSeconds,
+        },
       }));
-      loadScenario(created.id);
+      setIsNewScenarioModalOpen(false);
+      await loadScenario(created.id);
       setActiveTab('canvas');
     }
   };
@@ -784,7 +852,7 @@ function OrganizerWorkspace({
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-[#0e1015] text-slate-100">
-      {/* ЛЕВОЕ МЕНЮ: Список сценариев с индикатором запуска и таймером до следующего события */}
+      {/* ЛЕВОЕ МЕНЮ */}
       <aside className="w-72 bg-[#151821] border-r border-slate-800 flex flex-col justify-between shrink-0">
         <div className="p-4 space-y-4 overflow-y-auto">
           <div className="flex items-center justify-between">
@@ -794,7 +862,6 @@ function OrganizerWorkspace({
             </div>
           </div>
 
-          {/* Переключатель: Нод-Канвас / Таблицы задач */}
           <div className="grid grid-cols-2 gap-1 bg-[#0e1015] p-1 rounded-lg border border-slate-800">
             <button
               type="button"
@@ -824,13 +891,14 @@ function OrganizerWorkspace({
             </button>
           </div>
 
+          {/* Кнопка открытия меню выбора пустого или заготовленного сценария */}
           <button
             type="button"
-            onClick={handleCreateScenario}
-            className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow"
+            onClick={openCreateScenarioModal}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20"
           >
             <Plus className="w-4 h-4" />
-            Новый сценарий
+            Новый сценарий (шаблоны)
           </button>
 
           {/* Список сценариев с индикатором состояния и обратным отсчетом */}
@@ -861,7 +929,6 @@ function OrganizerWorkspace({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      {/* Индикатор: запущен или остановлен */}
                       <span
                         className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                           tState.isRunning
@@ -874,7 +941,6 @@ function OrganizerWorkspace({
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
-                      {/* Кнопка запуска/паузы прямо в списке сценариев */}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -913,7 +979,6 @@ function OrganizerWorkspace({
                     </div>
                   </div>
 
-                  {/* Строка статуса и таймера до следующего события */}
                   <div className="mt-1.5 flex items-center justify-between text-[11px] pl-4">
                     <span
                       className={
@@ -940,7 +1005,6 @@ function OrganizerWorkspace({
           </div>
         </div>
 
-        {/* Нижняя панель статуса сохранения и выхода */}
         <div className="p-4 border-t border-slate-800 space-y-2 bg-[#11131a]">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-400 flex items-center gap-1.5">
@@ -982,7 +1046,7 @@ function OrganizerWorkspace({
       {activeTab === 'canvas' ? (
         <div className="flex-1 flex flex-col h-full relative">
           {/* Верхний тулбар */}
-          <header className="h-14 bg-[#151821] border-b border-slate-800 px-4 flex items-center justify-between gap-4 z-10">
+          <header className="h-14 bg-[#151821] border-b border-slate-800 px-4 flex items-center justify-between gap-3 z-10">
             <div className="flex items-center gap-3">
               <input
                 type="text"
@@ -993,26 +1057,77 @@ function OrganizerWorkspace({
                 }}
                 className="bg-[#0e1015] border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-semibold text-white focus:outline-none focus:border-indigo-500"
               />
-              <span className="text-xs text-slate-400 hidden xl:inline">{tickLog}</span>
+
+              {/* Переключатель режима: Выделение рамкой и перемещение групп / Перемещение камеры */}
+              <div className="flex items-center bg-[#0e1015] p-1 rounded-lg border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setInteractionMode('select')}
+                  className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition ${
+                    interactionMode === 'select'
+                      ? 'bg-sky-600 text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Тяните мышкой по сетке, чтобы выделить сразу группу нодов и двигать их вместе"
+                >
+                  <MousePointerSquareDashed className="w-3.5 h-3.5" />
+                  Рамка (группы)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInteractionMode('pan')}
+                  className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition ${
+                    interactionMode === 'pan'
+                      ? 'bg-sky-600 text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Перемещение камеры левой кнопкой мыши (выделение рамкой через Shift)"
+                >
+                  <Hand className="w-3.5 h-3.5" />
+                  Камера
+                </button>
+              </div>
+
+              {selectedNodesCount > 0 && (
+                <div className="flex items-center gap-1.5 bg-sky-500/15 border border-sky-500/40 px-2.5 py-1 rounded-lg text-xs text-sky-200">
+                  <span>Выделено: {selectedNodesCount}</span>
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelectedNodes}
+                    className="ml-1 text-rose-300 hover:text-rose-200 underline"
+                  >
+                    Удалить группу
+                  </button>
+                </div>
+              )}
+
+              <span className="text-xs text-slate-400 hidden 2xl:inline">{tickLog}</span>
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Настройка периода таймера до следующего события */}
+              <button
+                type="button"
+                onClick={handleSelectAllNodes}
+                className="px-2.5 py-1.5 rounded-lg bg-[#0e1015] border border-slate-700 hover:border-slate-500 text-slate-300 text-xs"
+                title="Выделить все ноды на холсте для группового перемещения"
+              >
+                Выделить все
+              </button>
+
               {activeScenarioId && activeTimer && (
                 <div className="flex items-center gap-1.5 bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
-                  <span className="text-slate-400">Период тика (сек):</span>
+                  <span className="text-slate-400">Период (с):</span>
                   <input
                     type="number"
                     min={3}
                     max={3600}
                     value={activeTimer.intervalSeconds}
                     onChange={(e) => updateActiveScenarioInterval(Number(e.target.value) || 15)}
-                    className="w-14 bg-transparent text-white font-mono font-semibold text-center focus:outline-none"
+                    className="w-12 bg-transparent text-white font-mono font-semibold text-center focus:outline-none"
                   />
                 </div>
               )}
 
-              {/* Разовый тик */}
               <button
                 type="button"
                 onClick={runGraphTickLeftToRight}
@@ -1022,7 +1137,6 @@ function OrganizerWorkspace({
                 Разовый тик
               </button>
 
-              {/* Запуск / Остановка таймера текущего сценария */}
               {activeScenarioId && activeTimer && (
                 <button
                   type="button"
@@ -1049,7 +1163,7 @@ function OrganizerWorkspace({
             </div>
           </header>
 
-          {/* Канвас с сеткой и правая палитра */}
+          {/* Канвас с поддержкой выделения групп и правая палитра */}
           <div className="flex-1 flex relative">
             <div className="flex-1 h-full" onDrop={onDrop} onDragOver={onDragOver}>
               <ReactFlow
@@ -1066,6 +1180,11 @@ function OrganizerWorkspace({
                 onMoveEnd={() => triggerSave()}
                 onConnect={onConnect}
                 nodeTypes={nodeTypes}
+                selectionOnDrag={interactionMode === 'select'}
+                panOnDrag={interactionMode === 'pan' ? true : [1, 2]}
+                selectionMode={SelectionMode.Partial}
+                multiSelectionKeyCode={['Shift', 'Control', 'Meta']}
+                selectionKeyCode="Shift"
                 deleteKeyCode={['Backspace', 'Delete']}
                 className="bg-[#0f1219]"
               >
@@ -1150,12 +1269,19 @@ function OrganizerWorkspace({
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <div className="font-semibold text-slate-200">Подсказка:</div>
-                <p>1. Перетаскивайте блоки из палитры в любую точку сетки.</p>
+              <div className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                <div className="font-semibold text-slate-200">Групповое управление:</div>
                 <p>
-                  2. Запустите сценарий кнопкой «Запустить сценарий» или иконкой Play в списке
-                  слева — таймер начнет отсчет до следующего события.
+                  • В режиме <b>«Рамка (группы)»</b> зажмите левую кнопку мыши на пустом месте и
+                  обведите несколько нодов — теперь их можно перетаскивать все вместе за любой из
+                  выделенных нодов.
+                </p>
+                <p>
+                  • Также можно кликать по нодам с зажатым <b>Shift</b> или <b>Ctrl</b>.
+                </p>
+                <p>
+                  • Перемещать камеру в режиме рамки можно колесиком / средней или правой кнопкой
+                  мыши (либо переключив тумблер в <b>«Камера»</b>).
                 </p>
               </div>
             </aside>
@@ -1209,7 +1335,6 @@ function OrganizerWorkspace({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Список задач В РАБОТЕ */}
             <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="text-sm font-bold text-indigo-300 flex items-center gap-2">
@@ -1296,7 +1421,6 @@ function OrganizerWorkspace({
               )}
             </div>
 
-            {/* Список ВЫПОЛНЕННЫХ задач */}
             <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="text-sm font-bold text-emerald-300 flex items-center gap-2">
@@ -1463,6 +1587,98 @@ function OrganizerWorkspace({
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* МОДАЛЬНОЕ МЕНЮ ВЫБОРА ПУСТОГО ИЛИ ЗАГОТОВЛЕННОГО СЦЕНАРИЯ */}
+      {isNewScenarioModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-[#161923] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-400" />
+                <h2 className="text-base font-bold text-white">
+                  Создание сценария: выберите пустой холст или жизненный шаблон
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewScenarioModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmCreateScenario} className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Название нового сценария
+                </label>
+                <input
+                  type="text"
+                  value={customScenarioTitle}
+                  onChange={(e) => setCustomScenarioTitle(e.target.value)}
+                  placeholder="Введите название сценария..."
+                  className="w-full bg-[#0e1015] border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+                <div className="text-xs font-semibold text-slate-300">
+                  Выберите вариант сценария:
+                </div>
+
+                {SCENARIO_PRESETS.map((preset) => {
+                  const isActive = selectedPresetId === preset.id;
+                  return (
+                    <div
+                      key={preset.id}
+                      onClick={() => {
+                        setSelectedPresetId(preset.id);
+                        setCustomScenarioTitle(
+                          preset.id === 'empty'
+                            ? `Новый сценарий #${scenarios.length + 1}`
+                            : preset.title
+                        );
+                      }}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                        isActive
+                          ? 'bg-indigo-600/20 border-indigo-500 shadow-lg shadow-indigo-500/10'
+                          : 'bg-[#0e1015] border-slate-800 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-bold text-white">{preset.title}</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-indigo-300">
+                          {preset.category}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        {preset.description}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNewScenarioModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/30"
+                >
+                  Создать и открыть сценарий
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -26,18 +26,46 @@ export async function organizerRoutes(app: FastifyInstance) {
     return { scenario: res.rows[0] };
   });
 
-  // 3. Создать новый пустой сценарий (слева в меню)
-  app.post<{ Body: { title?: string } }>('/api/scenarios', async (request) => {
+  // 3. Создать новый сценарий (пустой или из предзаготовленного шаблона с графом)
+  app.post<{ Body: { title?: string; graph_data?: any } }>('/api/scenarios', async (request) => {
     const title = request.body?.title?.trim() || 'Новый сценарий';
-    const res = await query(
-      'INSERT INTO scenarios (user_id, title) VALUES ($1, $2) RETURNING id, title, graph_data, updated_at',
-      [request.user.id, title]
-    );
-    return { scenario: res.rows[0] };
+    const graphData = request.body?.graph_data || {
+      nodes: [],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+    const userId = request.user.id;
+
+    const createdScenario = await withTransaction(async (client) => {
+      const res = await client.query(
+        'INSERT INTO scenarios (user_id, title, graph_data) VALUES ($1, $2, $3::jsonb) RETURNING id, title, graph_data, updated_at',
+        [userId, title, JSON.stringify(graphData)]
+      );
+      const sc = res.rows[0];
+
+      // Если сценарий создан из шаблона — сразу регистрируем его задачи в таблице tasks
+      const nodes = Array.isArray(graphData?.nodes) ? graphData.nodes : [];
+      for (const node of nodes) {
+        if (node.type === 'taskNode' && node.id) {
+          const taskTitle = (node.data?.title || 'Новая задача').trim();
+          const taskStatus = node.data?.status === 'completed' ? 'completed' : 'in_progress';
+          await client.query(
+            `INSERT INTO tasks (user_id, scenario_id, node_id, title, status)
+             VALUES ($1, $2, $3, $4, $5::task_status)
+             ON CONFLICT (scenario_id, node_id)
+             DO UPDATE SET title = EXCLUDED.title, status = EXCLUDED.status`,
+            [userId, sc.id, String(node.id), taskTitle, taskStatus]
+          );
+        }
+      }
+
+      return sc;
+    });
+
+    return { scenario: createdScenario };
   });
 
-  // 4. Сохранить граф сценария (JSON с расположением, размерами и содержанием нодов)
-  // Одновременно синхронизирует квадратные ноды задач (type === 'taskNode') с таблицей tasks
+  // 4. Сохранить граф сценария
   app.put<{
     Params: { id: string };
     Body: { title?: string; graph_data: any };
@@ -59,7 +87,6 @@ export async function organizerRoutes(app: FastifyInstance) {
         [newTitle, JSON.stringify(graph_data), id, userId]
       );
 
-      // Синхронизируем ноды задач из графа в таблицу tasks
       const nodes = Array.isArray(graph_data?.nodes) ? graph_data.nodes : [];
       for (const node of nodes) {
         if (node.type === 'taskNode' && node.id) {
@@ -94,7 +121,7 @@ export async function organizerRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // 6. Получить список всех задач (с фильтром по статусу in_progress / completed) и суммарным временем
+  // 6. Получить список всех задач
   app.get<{ Querystring: { status?: string } }>('/api/tasks', async (request) => {
     const statusFilter =
       request.query.status === 'in_progress' || request.query.status === 'completed'
@@ -146,7 +173,7 @@ export async function organizerRoutes(app: FastifyInstance) {
     return { task: res.rows[0] };
   });
 
-  // 8. Создать задачу напрямую или из нода
+  // 8. Создать задачу
   app.post<{
     Body: {
       title: string;
@@ -184,7 +211,7 @@ export async function organizerRoutes(app: FastifyInstance) {
     return { task };
   });
 
-  // 9. Редактировать задачу (название и статус: в работе / выполненная)
+  // 9. Редактировать задачу
   app.put<{
     Params: { id: string };
     Body: { title?: string; status?: 'in_progress' | 'completed' };
@@ -220,7 +247,7 @@ export async function organizerRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // 11. Записать затраченное время для задачи (вручную или при прохождении тика по графу слева направо)
+  // 11. Записать затраченное время
   app.post<{
     Body: {
       task_id?: string;
@@ -254,7 +281,6 @@ export async function organizerRoutes(app: FastifyInstance) {
     const result = await withTransaction(async (client) => {
       let targetTaskId = task_id;
 
-      // Если время пришло из нода на графе — находим или создаем связанную задачу
       if (!targetTaskId && scenario_id && node_id) {
         const upsertTask = await client.query(
           `INSERT INTO tasks (user_id, scenario_id, node_id, title, status)
@@ -277,7 +303,6 @@ export async function organizerRoutes(app: FastifyInstance) {
         throw new Error('Не указана задача');
       }
 
-      // Проверяем принадлежность задачи пользователю
       const checkTask = await client.query(
         'SELECT id FROM tasks WHERE id = $1 AND user_id = $2',
         [targetTaskId, request.user.id]
@@ -308,7 +333,7 @@ export async function organizerRoutes(app: FastifyInstance) {
     return result;
   });
 
-  // 12. Получить ВСЕ записи времени в органайзере (общий журнал)
+  // 12. Получить все записи времени
   app.get('/api/time-entries', async (request) => {
     const res = await query(
       `SELECT te.id, te.entry_date::text AS entry_date, te.duration_minutes, te.source_node_id, te.note, te.created_at,
@@ -322,7 +347,7 @@ export async function organizerRoutes(app: FastifyInstance) {
     return { entries: res.rows };
   });
 
-  // 13. Удалить отдельную запись времени
+  // 13. Удалить запись времени
   app.delete<{ Params: { id: string } }>('/api/time-entries/:id', async (request) => {
     await query(
       `DELETE FROM time_entries te
