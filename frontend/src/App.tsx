@@ -405,7 +405,7 @@ function OrganizerWorkspace({
           {
             ...params,
             animated: true,
-            style: { stroke: '#6366f1', strokeWidth: 2.5 },
+            style: { stroke: '#71717a', strokeWidth: 2.5 },
           },
           eds
         )
@@ -853,22 +853,22 @@ function OrganizerWorkspace({
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-[#0e1015] text-slate-100">
       {/* ЛЕВОЕ МЕНЮ */}
-      <aside className="w-72 bg-[#151821] border-r border-slate-800 flex flex-col justify-between shrink-0">
+      <aside className="w-72 bg-[#151821] border-r border-zinc-800 flex flex-col justify-between shrink-0">
         <div className="p-4 space-y-4 overflow-y-auto">
           <div className="flex items-center justify-between">
             <div className="font-bold text-sm tracking-wide text-white flex items-center gap-2">
-              <FolderKanban className="w-4 h-4 text-indigo-400" />
+              <FolderKanban className="w-4 h-4 text-zinc-400" />
               Органайзер времени
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-1 bg-[#0e1015] p-1 rounded-lg border border-slate-800">
+          <div className="grid grid-cols-2 gap-1 bg-[#0e1015] p-1 rounded border border-zinc-800">
             <button
               type="button"
               onClick={() => setActiveTab('canvas')}
               className={`py-1.5 px-2 rounded text-xs font-semibold transition ${
                 activeTab === 'canvas'
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-zinc-800 border border-zinc-700 text-white'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -882,7 +882,7 @@ function OrganizerWorkspace({
               }}
               className={`py-1.5 px-2 rounded text-xs font-semibold transition flex items-center justify-center gap-1 ${
                 activeTab === 'organizer'
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-zinc-800 border border-zinc-700 text-white'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -895,7 +895,7 @@ function OrganizerWorkspace({
           <button
             type="button"
             onClick={openCreateScenarioModal}
-            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20"
+            className="w-full py-2.5 px-3 rounded bg-[#18181b] border-b border-zinc-800 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-none "
           >
             <Plus className="w-4 h-4" />
             Новый сценарий (шаблоны)
@@ -921,10 +921,10 @@ function OrganizerWorkspace({
                     loadScenario(sc.id);
                     setActiveTab('canvas');
                   }}
-                  className={`group p-2.5 rounded-xl text-xs cursor-pointer transition border ${
+                  className={`group p-2.5 rounded text-xs cursor-pointer transition border ${
                     isSelected
-                      ? 'bg-indigo-600/15 border-indigo-500/60 text-white'
-                      : 'bg-[#10131b] border-slate-800/80 text-slate-300 hover:bg-slate-800/50'
+                      ? 'bg-zinc-800 border border-zinc-700/15 border-indigo-500/60 text-white'
+                      : 'bg-[#10131b] border-zinc-800/80 text-slate-300 hover:bg-slate-800/50'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -1005,7 +1005,7 @@ function OrganizerWorkspace({
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-800 space-y-2 bg-[#11131a]">
+        <div className="p-4 border-t border-zinc-800 space-y-2 bg-[#09090b]">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-400 flex items-center gap-1.5">
               <Save className="w-3.5 h-3.5 text-emerald-400" />
@@ -1028,8 +1028,8 @@ function OrganizerWorkspace({
             </span>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-            <span className="font-medium text-slate-200 truncate">👤 {user.login}</span>
+          <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80 text-xs">
+            <span className="font-medium text-slate-200 truncate">{user.login}</span>
             <button
               type="button"
               onClick={onLogout}
@@ -1046,7 +1046,7 @@ function OrganizerWorkspace({
       {activeTab === 'canvas' ? (
         <div className="flex-1 flex flex-col h-full relative">
           {/* Верхний тулбар */}
-          <header className="h-14 bg-[#151821] border-b border-slate-800 px-4 flex items-center justify-between gap-3 z-10">
+          <header className="h-14 bg-[#151821] border-b border-zinc-800 px-4 flex items-center justify-between gap-3 z-10">
             <div className="flex items-center gap-3">
               <input
                 type="text"
@@ -1055,11 +1055,11 @@ function OrganizerWorkspace({
                   setScenarioTitle(e.target.value);
                   setSaveStatus('unsaved');
                 }}
-                className="bg-[#0e1015] border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-semibold text-white focus:outline-none focus:border-indigo-500"
+                className="bg-[#0e1015] border border-zinc-800 rounded px-3 py-1.5 text-sm font-semibold text-white focus:outline-none focus:border-zinc-500"
               />
 
               {/* Переключатель режима: Выделение рамкой и перемещение групп / Перемещение камеры */}
-              <div className="flex items-center bg-[#0e1015] p-1 rounded-lg border border-slate-700">
+              <div className="flex items-center bg-[#0e1015] p-1 rounded border border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setInteractionMode('select')}
@@ -1089,7 +1089,7 @@ function OrganizerWorkspace({
               </div>
 
               {selectedNodesCount > 0 && (
-                <div className="flex items-center gap-1.5 bg-sky-500/15 border border-sky-500/40 px-2.5 py-1 rounded-lg text-xs text-sky-200">
+                <div className="flex items-center gap-1.5 bg-sky-500/15 border border-sky-500/40 px-2.5 py-1 rounded text-xs text-sky-200">
                   <span>Выделено: {selectedNodesCount}</span>
                   <button
                     type="button"
@@ -1108,14 +1108,14 @@ function OrganizerWorkspace({
               <button
                 type="button"
                 onClick={handleSelectAllNodes}
-                className="px-2.5 py-1.5 rounded-lg bg-[#0e1015] border border-slate-700 hover:border-slate-500 text-slate-300 text-xs"
+                className="px-2.5 py-1.5 rounded bg-[#0e1015] border border-zinc-800 hover:border-slate-500 text-slate-300 text-xs"
                 title="Выделить все ноды на холсте для группового перемещения"
               >
                 Выделить все
               </button>
 
               {activeScenarioId && activeTimer && (
-                <div className="flex items-center gap-1.5 bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+                <div className="flex items-center gap-1.5 bg-[#0e1015] border border-zinc-800 rounded px-2.5 py-1 text-xs">
                   <span className="text-slate-400">Период (с):</span>
                   <input
                     type="number"
@@ -1131,7 +1131,7 @@ function OrganizerWorkspace({
               <button
                 type="button"
                 onClick={runGraphTickLeftToRight}
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow"
+                className="px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow"
               >
                 <Zap className="w-3.5 h-3.5" />
                 Разовый тик
@@ -1141,10 +1141,10 @@ function OrganizerWorkspace({
                 <button
                   type="button"
                   onClick={() => toggleScenarioRunning(activeScenarioId)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition ${
+                  className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 border transition ${
                     activeTimer.isRunning
                       ? 'bg-emerald-600/20 border-emerald-400 text-emerald-200'
-                      : 'bg-[#0e1015] border-slate-700 text-slate-300 hover:border-slate-500'
+                      : 'bg-[#0e1015] border-zinc-800 text-slate-300 hover:border-slate-500'
                   }`}
                 >
                   {activeTimer.isRunning ? (
@@ -1189,17 +1189,17 @@ function OrganizerWorkspace({
                 className="bg-[#0f1219]"
               >
                 <Background variant={BackgroundVariant.Lines} gap={28} size={1} color="#1e2433" />
-                <Controls className="!bg-[#151821] !border-slate-700 !text-white" />
+                <Controls className="!bg-[#151821] !border-zinc-800 !text-white" />
                 <MiniMap
                   nodeColor="#4f46e5"
                   maskColor="rgba(15, 18, 25, 0.75)"
-                  className="!bg-[#151821] !border !border-slate-700"
+                  className="!bg-[#151821] !border !border-zinc-800"
                 />
               </ReactFlow>
             </div>
 
             {/* ПРАВАЯ ПАЛИТРА ЭЛЕМЕНТОВ */}
-            <aside className="w-72 bg-[#151821] border-l border-slate-800 p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
+            <aside className="w-72 bg-[#151821] border-l border-zinc-800 p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
               <div className="space-y-4">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
@@ -1214,9 +1214,9 @@ function OrganizerWorkspace({
                   <div
                     draggable
                     onDragStart={(e) => onDragStart(e, 'taskNode')}
-                    className="p-3 rounded-xl bg-[#1c202c] border border-indigo-500/50 hover:border-indigo-400 cursor-grab active:cursor-grabbing transition shadow"
+                    className="p-3 rounded bg-[#1c202c] border border-indigo-500/50 hover:border-indigo-400 cursor-grab active:cursor-grabbing transition shadow"
                   >
-                    <div className="flex items-center gap-2 text-xs font-bold text-indigo-300">
+                    <div className="flex items-center gap-2 text-xs font-bold text-zinc-200">
                       <CheckSquare className="w-4 h-4" />
                       Квадратный нод задачи
                     </div>
@@ -1228,7 +1228,7 @@ function OrganizerWorkspace({
                   <div
                     draggable
                     onDragStart={(e) => onDragStart(e, 'timeNode')}
-                    className="p-3 rounded-xl bg-[#1c202c] border border-cyan-500/50 hover:border-cyan-400 cursor-grab active:cursor-grabbing transition shadow"
+                    className="p-3 rounded bg-[#1c202c] border border-cyan-500/50 hover:border-cyan-400 cursor-grab active:cursor-grabbing transition shadow"
                   >
                     <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
                       <Clock className="w-4 h-4" />
@@ -1242,7 +1242,7 @@ function OrganizerWorkspace({
                   <div
                     draggable
                     onDragStart={(e) => onDragStart(e, 'conditionNode')}
-                    className="p-3 rounded-xl bg-[#1c202c] border border-amber-500/50 hover:border-amber-400 cursor-grab active:cursor-grabbing transition shadow"
+                    className="p-3 rounded bg-[#1c202c] border border-amber-500/50 hover:border-amber-400 cursor-grab active:cursor-grabbing transition shadow"
                   >
                     <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
                       <GitBranch className="w-4 h-4" />
@@ -1256,9 +1256,9 @@ function OrganizerWorkspace({
                   <div
                     draggable
                     onDragStart={(e) => onDragStart(e, 'weatherNode')}
-                    className="p-3 rounded-xl bg-[#1c202c] border border-purple-500/50 hover:border-purple-400 cursor-grab active:cursor-grabbing transition shadow"
+                    className="p-3 rounded bg-[#1c202c] border border-purple-500/50 hover:border-purple-400 cursor-grab active:cursor-grabbing transition shadow"
                   >
-                    <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
+                    <div className="flex items-center gap-2 text-xs font-bold text-zinc-200">
                       <CloudSun className="w-4 h-4" />
                       Погодный нод (TRUE / FALSE)
                     </div>
@@ -1269,7 +1269,7 @@ function OrganizerWorkspace({
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+              <div className="p-3 rounded bg-[#0e1015] border border-zinc-800 text-[11px] text-slate-400 space-y-1.5">
                 <div className="font-semibold text-slate-200">Групповое управление:</div>
                 <p>
                   • В режиме <b>«Рамка (группы)»</b> зажмите левую кнопку мыши на пустом месте и
@@ -1303,31 +1303,31 @@ function OrganizerWorkspace({
 
             <form
               onSubmit={handleCreateTaskManual}
-              className="flex flex-wrap items-center gap-2 bg-[#151821] p-2.5 rounded-xl border border-slate-800"
+              className="flex flex-wrap items-center gap-2 bg-[#151821] p-2.5 rounded border border-zinc-800"
             >
               <input
                 type="text"
                 placeholder="Название задачи..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
-                className="bg-[#0e1015] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                className="bg-[#0e1015] border border-zinc-800 rounded px-3 py-1.5 text-xs text-white"
               />
               <input
                 type="date"
                 value={newTaskDate}
                 onChange={(e) => setNewTaskDate(e.target.value)}
-                className="bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                className="bg-[#0e1015] border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-white"
               />
               <input
                 type="number"
                 min={1}
                 value={newTaskMinutes}
                 onChange={(e) => setNewTaskMinutes(Number(e.target.value) || 0)}
-                className="w-20 bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                className="w-20 bg-[#0e1015] border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-white"
               />
               <button
                 type="submit"
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                className="px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white text-xs font-semibold"
               >
                 + Добавить задачу
               </button>
@@ -1335,9 +1335,9 @@ function OrganizerWorkspace({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-sm font-bold text-indigo-300 flex items-center gap-2">
+            <div className="bg-[#151821] border border-zinc-800 rounded p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                <span className="text-sm font-bold text-zinc-200 flex items-center gap-2">
                   <CircleDot className="w-4 h-4" />
                   Задачи в работе ({tasksInProgress.length})
                 </span>
@@ -1354,7 +1354,7 @@ function OrganizerWorkspace({
                   {tasksInProgress.map((t) => (
                     <div
                       key={t.id}
-                      className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between gap-2"
+                      className="p-3 rounded bg-[#0e1015] border border-zinc-800 flex items-center justify-between gap-2"
                     >
                       <div className="flex-1 min-w-0">
                         {editingTaskId === t.id ? (
@@ -1375,13 +1375,13 @@ function OrganizerWorkspace({
                         ) : (
                           <div
                             onClick={() => openTaskDetails(t.id)}
-                            className="font-semibold text-sm text-white hover:text-indigo-300 cursor-pointer truncate"
+                            className="font-semibold text-sm text-white hover:text-zinc-200 cursor-pointer truncate"
                           >
                             {t.title}
                           </div>
                         )}
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          Суммарное время: <b className="text-indigo-300">{t.total_minutes} мин</b>{' '}
+                          Суммарное время: <b className="text-zinc-200">{t.total_minutes} мин</b>{' '}
                           • Записей: {t.entries_count}
                         </div>
                       </div>
@@ -1421,8 +1421,8 @@ function OrganizerWorkspace({
               )}
             </div>
 
-            <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="bg-[#151821] border border-zinc-800 rounded p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
                 <span className="text-sm font-bold text-emerald-300 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
                   Выполненные задачи ({tasksCompleted.length})
@@ -1440,7 +1440,7 @@ function OrganizerWorkspace({
                   {tasksCompleted.map((t) => (
                     <div
                       key={t.id}
-                      className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between gap-2"
+                      className="p-3 rounded bg-[#0e1015] border border-zinc-800 flex items-center justify-between gap-2"
                     >
                       <div className="flex-1 min-w-0">
                         <div
@@ -1483,8 +1483,8 @@ function OrganizerWorkspace({
           </div>
 
           {selectedTaskDetail && (
-            <div className="bg-[#151821] border-2 border-indigo-500/60 rounded-2xl p-5 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div className="bg-[#151821] border-2 border-indigo-500/60 rounded p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 pb-3">
                 <div>
                   <h2 className="text-base font-bold text-white">
                     Детализация задачи: «{selectedTaskDetail.title}»
@@ -1493,7 +1493,7 @@ function OrganizerWorkspace({
                     Статус:{' '}
                     {selectedTaskDetail.status === 'completed' ? 'Выполненная' : 'В работе'} •
                     Суммарное затраченное время:{' '}
-                    <b className="text-indigo-300">{selectedTaskDetail.total_minutes} мин</b>
+                    <b className="text-zinc-200">{selectedTaskDetail.total_minutes} мин</b>
                   </p>
                 </div>
 
@@ -1502,18 +1502,18 @@ function OrganizerWorkspace({
                     type="date"
                     value={newTaskDate}
                     onChange={(e) => setNewTaskDate(e.target.value)}
-                    className="bg-[#0e1015] border border-slate-700 rounded px-2 py-1 text-xs"
+                    className="bg-[#0e1015] border border-zinc-800 rounded px-2 py-1 text-xs"
                   />
                   <input
                     type="number"
                     min={1}
                     value={newTaskMinutes}
                     onChange={(e) => setNewTaskMinutes(Number(e.target.value) || 1)}
-                    className="w-20 bg-[#0e1015] border border-slate-700 rounded px-2 py-1 text-xs"
+                    className="w-20 bg-[#0e1015] border border-zinc-800 rounded px-2 py-1 text-xs"
                   />
                   <button
                     onClick={handleAddEntryToSelectedTask}
-                    className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                    className="px-3 py-1 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white text-xs font-semibold"
                   >
                     + Записать время к задаче
                   </button>
@@ -1529,10 +1529,10 @@ function OrganizerWorkspace({
                   selectedTaskDetail.entries.map((en) => (
                     <div
                       key={en.id}
-                      className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between text-xs"
+                      className="p-3 rounded bg-[#0e1015] border border-zinc-800 flex items-center justify-between text-xs"
                     >
                       <span className="flex items-center gap-1.5 text-slate-300">
-                        <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                        <Calendar className="w-3.5 h-3.5 text-zinc-400" />
                         {en.entry_date}
                       </span>
                       <span className="font-bold text-emerald-400">
@@ -1545,7 +1545,7 @@ function OrganizerWorkspace({
             </div>
           )}
 
-          <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div className="bg-[#151821] border border-zinc-800 rounded p-4 space-y-3">
             <h2 className="text-sm font-bold text-slate-200">
               Все записи в органайзере ({allEntries.length})
             </h2>
@@ -1555,7 +1555,7 @@ function OrganizerWorkspace({
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-slate-800 text-slate-400">
+                    <tr className="border-b border-zinc-800 text-slate-400">
                       <th className="py-2 px-3">Дата выполнения</th>
                       <th className="py-2 px-3">Задача</th>
                       <th className="py-2 px-3">Статус задачи</th>
@@ -1564,7 +1564,7 @@ function OrganizerWorkspace({
                   </thead>
                   <tbody>
                     {allEntries.map((item) => (
-                      <tr key={item.id} className="border-b border-slate-800/60">
+                      <tr key={item.id} className="border-b border-zinc-800/60">
                         <td className="py-2 px-3 font-mono text-slate-300">{item.entry_date}</td>
                         <td className="py-2 px-3 font-medium text-white">{item.task_title}</td>
                         <td className="py-2 px-3">
@@ -1572,7 +1572,7 @@ function OrganizerWorkspace({
                             className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                               item.task_status === 'completed'
                                 ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-indigo-500/20 text-indigo-300'
+                                : 'bg-indigo-500/20 text-zinc-200'
                             }`}
                           >
                             {item.task_status === 'completed' ? 'Выполненная' : 'В работе'}
@@ -1594,10 +1594,10 @@ function OrganizerWorkspace({
       {/* МОДАЛЬНОЕ МЕНЮ ВЫБОРА ПУСТОГО ИЛИ ЗАГОТОВЛЕННОГО СЦЕНАРИЯ */}
       {isNewScenarioModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-[#161923] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="w-full max-w-2xl bg-[#161923] border border-zinc-800 rounded shadow-none overflow-hidden">
+            <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-400" />
+                <Sparkles className="w-5 h-5 text-zinc-400" />
                 <h2 className="text-base font-bold text-white">
                   Создание сценария: выберите пустой холст или жизненный шаблон
                 </h2>
@@ -1621,7 +1621,7 @@ function OrganizerWorkspace({
                   value={customScenarioTitle}
                   onChange={(e) => setCustomScenarioTitle(e.target.value)}
                   placeholder="Введите название сценария..."
-                  className="w-full bg-[#0e1015] border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#0e1015] border border-zinc-800 rounded px-3.5 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
                 />
               </div>
 
@@ -1643,15 +1643,15 @@ function OrganizerWorkspace({
                             : preset.title
                         );
                       }}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                      className={`p-3.5 rounded border cursor-pointer transition ${
                         isActive
-                          ? 'bg-indigo-600/20 border-indigo-500 shadow-lg shadow-indigo-500/10'
-                          : 'bg-[#0e1015] border-slate-800 hover:border-slate-600'
+                          ? 'bg-zinc-800 border border-zinc-700/20 border-indigo-500 shadow-none '
+                          : 'bg-[#0e1015] border-zinc-800 hover:border-slate-600'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-bold text-white">{preset.title}</span>
-                        <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-indigo-300">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-zinc-200">
                           {preset.category}
                         </span>
                       </div>
@@ -1663,17 +1663,17 @@ function OrganizerWorkspace({
                 })}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setIsNewScenarioModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300"
+                  className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/30"
+                  className="px-5 py-2 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-xs font-semibold text-white shadow-none "
                 >
                   Создать и открыть сценарий
                 </button>
@@ -1737,9 +1737,9 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0d0f14] p-4">
-        <div className="w-full max-w-md bg-[#161922] border border-slate-800 rounded-2xl shadow-2xl p-8">
+        <div className="w-full max-w-md bg-[#161922] border border-zinc-800 rounded shadow-none p-8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-lg">
+            <div className="w-10 h-10 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-lg">
               ⏱
             </div>
             <div>
@@ -1748,12 +1748,12 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex rounded-lg bg-[#0d0f14] p-1 mb-6">
+          <div className="flex rounded bg-[#0d0f14] p-1 mb-6">
             <button
               type="button"
               onClick={() => setAuthMode('login')}
               className={`flex-1 py-2 text-xs font-semibold rounded-md transition ${
-                authMode === 'login' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                authMode === 'login' ? 'bg-zinc-800 border border-zinc-700 text-white' : 'text-slate-400'
               }`}
             >
               Вход
@@ -1762,7 +1762,7 @@ export default function App() {
               type="button"
               onClick={() => setAuthMode('register')}
               className={`flex-1 py-2 text-xs font-semibold rounded-md transition ${
-                authMode === 'register' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                authMode === 'register' ? 'bg-zinc-800 border border-zinc-700 text-white' : 'text-slate-400'
               }`}
             >
               Регистрация
@@ -1770,7 +1770,7 @@ export default function App() {
           </div>
 
           {authError && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+            <div className="mb-4 p-3 rounded bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
               {authError}
             </div>
           )}
@@ -1784,7 +1784,7 @@ export default function App() {
                 value={loginInput}
                 onChange={(e) => setLoginInput(e.target.value)}
                 placeholder="Например: admin"
-                className="w-full bg-[#0d0f14] border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0d0f14] border border-zinc-800 rounded px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
               />
             </div>
 
@@ -1796,13 +1796,13 @@ export default function App() {
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 placeholder="Минимум 4 символа"
-                className="w-full bg-[#0d0f14] border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0d0f14] border border-zinc-800 rounded px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition"
+              className="w-full py-2.5 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white font-semibold text-sm transition"
             >
               {authMode === 'login' ? 'Войти в органайзер' : 'Создать аккаунт'}
             </button>

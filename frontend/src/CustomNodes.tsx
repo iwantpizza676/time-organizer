@@ -17,9 +17,9 @@ export function TaskNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className={`w-[250px] min-h-[235px] rounded-xl bg-[#1b1f2a]/95 border-2 shadow-2xl transition-all duration-300 flex flex-col justify-between ${
+      className={`w-[250px] min-h-[235px] rounded bg-[#121215] border-2 shadow-none transition-all duration-300 flex flex-col justify-between ${
         isTicked
-          ? 'border-emerald-400 shadow-emerald-500/30 ring-2 ring-emerald-400/40'
+          ? 'border-emerald-400  ring-2 ring-zinc-700'
           : status === 'completed'
           ? 'border-emerald-600/80'
           : 'border-indigo-500/80'
@@ -35,15 +35,15 @@ export function TaskNode({ id, data }: NodeProps) {
 
       {/* Заголовок нода в стиле Blueprint */}
       <div
-        className={`px-3 py-2 rounded-t-[10px] flex items-center justify-between text-xs font-bold uppercase tracking-wider ${
+        className={`px-3 py-2 rounded-t flex items-center justify-between text-xs font-bold uppercase tracking-wider ${
           status === 'completed'
-            ? 'bg-gradient-to-r from-emerald-700 to-teal-800 text-emerald-100'
-            : 'bg-gradient-to-r from-indigo-700 to-blue-800 text-indigo-100'
+            ? 'bg-[#18181b] border-b border-zinc-800 text-emerald-100'
+            : 'bg-[#18181b] border-b border-zinc-800 text-zinc-100'
         }`}
       >
         <span className="flex items-center gap-1.5">
           <CheckSquare className="w-4 h-4" />
-          Нод Задачи
+          Задача
         </span>
         <span className="px-1.5 py-0.5 rounded bg-black/30 text-[10px]">
           Σ {d.totalMinutes || 0} мин
@@ -58,7 +58,7 @@ export function TaskNode({ id, data }: NodeProps) {
             type="text"
             value={d.title ?? 'Новая задача'}
             onChange={(e) => callbacks?.onUpdateNodeData(id, { title: e.target.value })}
-            className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
+            className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
             placeholder="Введите задачу..."
           />
         </div>
@@ -73,7 +73,7 @@ export function TaskNode({ id, data }: NodeProps) {
                   status: e.target.value as 'in_progress' | 'completed',
                 })
               }
-              className="w-full bg-[#11131a] border border-slate-700 rounded px-1.5 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
+              className="w-full bg-[#09090b] border border-zinc-800 rounded px-1.5 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
             >
               <option value="in_progress">В работе</option>
               <option value="completed">Выполненная</option>
@@ -91,7 +91,7 @@ export function TaskNode({ id, data }: NodeProps) {
                   durationMinutes: Math.max(1, Number(e.target.value) || 0),
                 })
               }
-              className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
+              className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
             />
           </div>
         </div>
@@ -102,7 +102,7 @@ export function TaskNode({ id, data }: NodeProps) {
             type="date"
             value={d.entryDate || today}
             onChange={(e) => callbacks?.onUpdateNodeData(id, { entryDate: e.target.value })}
-            className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
+            className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-indigo-400"
           />
         </div>
 
@@ -117,7 +117,7 @@ export function TaskNode({ id, data }: NodeProps) {
               status
             )
           }
-          className="w-full mt-1 py-1.5 px-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center justify-center gap-1 transition"
+          className="w-full mt-1 py-1.5 px-2 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white font-semibold flex items-center justify-center gap-1 transition"
         >
           <PlusCircle className="w-3.5 h-3.5" />
           Записать время (+{d.durationMinutes ?? 30}м)
@@ -162,9 +162,9 @@ export function TimeNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className={`w-[230px] rounded-xl bg-[#1b1f2a]/95 border-2 shadow-2xl transition-all duration-300 ${
+      className={`w-[230px] rounded bg-[#121215] border-2 shadow-none transition-all duration-300 ${
         isTicked
-          ? 'border-cyan-400 shadow-cyan-500/30 ring-2 ring-cyan-400/40'
+          ? 'border-cyan-400  ring-2 ring-zinc-700'
           : 'border-cyan-600/80'
       }`}
     >
@@ -176,7 +176,7 @@ export function TimeNode({ id, data }: NodeProps) {
         title="Вход сигнала"
       />
 
-      <div className="px-3 py-2 rounded-t-[10px] bg-gradient-to-r from-cyan-700 to-sky-800 text-cyan-100 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+      <div className="px-3 py-2 rounded-t bg-[#18181b] border-b border-zinc-800 text-cyan-100 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
         <span className="flex items-center gap-1.5">
           <Clock className="w-4 h-4" />
           Время / Таймер
@@ -199,7 +199,7 @@ export function TimeNode({ id, data }: NodeProps) {
                   durationMinutes: Math.max(1, Number(e.target.value) || 1),
                 })
               }
-              className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-cyan-400"
+              className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-cyan-400"
             />
           </div>
 
@@ -226,7 +226,7 @@ export function TimeNode({ id, data }: NodeProps) {
             type="date"
             value={d.entryDate || today}
             onChange={(e) => callbacks?.onUpdateNodeData(id, { entryDate: e.target.value })}
-            className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-cyan-400"
+            className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-cyan-400"
           />
         </div>
       </div>
@@ -242,7 +242,7 @@ export function TimeNode({ id, data }: NodeProps) {
   );
 }
 
-// 3. Нод Условия (1 вход и 2 выхода: TRUE / FALSE)
+// 3. Условие (1 вход и 2 выхода: TRUE / FALSE)
 export function ConditionNode({ id, data }: NodeProps) {
   const d = data as any;
   const callbacks: NodeCallbacks | undefined = d.callbacks;
@@ -253,9 +253,9 @@ export function ConditionNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className={`w-[235px] rounded-xl bg-[#1b1f2a]/95 border-2 shadow-2xl transition-all duration-300 relative ${
+      className={`w-[235px] rounded bg-[#121215] border-2 shadow-none transition-all duration-300 relative ${
         isTicked
-          ? 'border-amber-400 shadow-amber-500/30 ring-2 ring-amber-400/40'
+          ? 'border-amber-400  ring-2 ring-zinc-700'
           : 'border-amber-600/80'
       }`}
     >
@@ -267,10 +267,10 @@ export function ConditionNode({ id, data }: NodeProps) {
         title="Вход (1 вход)"
       />
 
-      <div className="px-3 py-2 rounded-t-[10px] bg-gradient-to-r from-amber-700 to-orange-800 text-amber-100 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+      <div className="px-3 py-2 rounded-t bg-[#18181b] border-b border-zinc-800 text-amber-100 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
         <span className="flex items-center gap-1.5">
           <GitBranch className="w-4 h-4" />
-          Нод Условия
+          Условие
         </span>
         {lastResult !== undefined && (
           <span
@@ -290,7 +290,7 @@ export function ConditionNode({ id, data }: NodeProps) {
             <select
               value={operator}
               onChange={(e) => callbacks?.onUpdateNodeData(id, { operator: e.target.value })}
-              className="bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100"
+              className="bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100"
             >
               <option value=">=">&ge;</option>
               <option value="<=">&le;</option>
@@ -302,7 +302,7 @@ export function ConditionNode({ id, data }: NodeProps) {
               onChange={(e) =>
                 callbacks?.onUpdateNodeData(id, { threshold: Number(e.target.value) || 0 })
               }
-              className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100"
+              className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100"
             />
           </div>
         </div>
@@ -312,7 +312,7 @@ export function ConditionNode({ id, data }: NodeProps) {
           <select
             value={d.mode || 'auto'}
             onChange={(e) => callbacks?.onUpdateNodeData(id, { mode: e.target.value })}
-            className="bg-[#11131a] border border-slate-700 rounded px-1.5 py-0.5 text-slate-200"
+            className="bg-[#09090b] border border-zinc-800 rounded px-1.5 py-0.5 text-slate-200"
           >
             <option value="auto">По формуле</option>
             <option value="true">Всегда TRUE</option>
@@ -358,9 +358,9 @@ export function WeatherNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className={`w-[255px] rounded-xl bg-[#1b1f2a]/95 border-2 shadow-2xl transition-all duration-300 relative ${
+      className={`w-[255px] rounded bg-[#121215] border-2 shadow-none transition-all duration-300 relative ${
         isTicked
-          ? 'border-purple-400 shadow-purple-500/30 ring-2 ring-purple-400/40'
+          ? 'border-purple-400  ring-2 ring-zinc-700'
           : 'border-purple-600/80'
       }`}
     >
@@ -372,10 +372,10 @@ export function WeatherNode({ id, data }: NodeProps) {
         title="Вход сигнала"
       />
 
-      <div className="px-3 py-2 rounded-t-[10px] bg-gradient-to-r from-purple-700 to-fuchsia-800 text-purple-100 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+      <div className="px-3 py-2 rounded-t bg-[#18181b] border-b border-zinc-800 text-purple-100 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
         <span className="flex items-center gap-1.5">
           <CloudSun className="w-4 h-4" />
-          Погодный Нод
+          Погода
         </span>
         {lastResult !== undefined && (
           <span
@@ -396,7 +396,7 @@ export function WeatherNode({ id, data }: NodeProps) {
             value={d.region ?? 'Москва'}
             onChange={(e) => callbacks?.onUpdateNodeData(id, { region: e.target.value })}
             placeholder="Например, Москва"
-            className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-purple-400"
+            className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-purple-400"
           />
         </div>
 
@@ -409,7 +409,7 @@ export function WeatherNode({ id, data }: NodeProps) {
               onChange={(e) =>
                 callbacks?.onUpdateNodeData(id, { temperature: Number(e.target.value) || 0 })
               }
-              className="w-full bg-[#11131a] border border-slate-700 rounded px-2 py-1 text-slate-100"
+              className="w-full bg-[#09090b] border border-zinc-800 rounded px-2 py-1 text-slate-100"
             />
           </div>
 
@@ -418,12 +418,12 @@ export function WeatherNode({ id, data }: NodeProps) {
             <select
               value={d.weather ?? 'Ясно'}
               onChange={(e) => callbacks?.onUpdateNodeData(id, { weather: e.target.value })}
-              className="w-full bg-[#11131a] border border-slate-700 rounded px-1.5 py-1 text-slate-100"
+              className="w-full bg-[#09090b] border border-zinc-800 rounded px-1.5 py-1 text-slate-100"
             >
-              <option value="Ясно">☀ Ясно</option>
-              <option value="Облачно">⛅ Облачно</option>
-              <option value="Дождь">🌧 Дождь</option>
-              <option value="Снег">❄ Снег</option>
+              <option value="Ясно">Ясно</option>
+              <option value="Облачно">Облачно</option>
+              <option value="Дождь">Дождь</option>
+              <option value="Снег">Снег</option>
             </select>
           </div>
         </div>
@@ -433,7 +433,7 @@ export function WeatherNode({ id, data }: NodeProps) {
           <select
             value={d.conditionPass ?? 'true'}
             onChange={(e) => callbacks?.onUpdateNodeData(id, { conditionPass: e.target.value })}
-            className="bg-[#11131a] border border-slate-700 rounded px-1.5 py-0.5 text-slate-100"
+            className="bg-[#09090b] border border-zinc-800 rounded px-1.5 py-0.5 text-slate-100"
           >
             <option value="true">Подходит (TRUE)</option>
             <option value="false">Не подходит (FALSE)</option>

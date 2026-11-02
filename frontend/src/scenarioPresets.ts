@@ -92,7 +92,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
           target: 'preset_sport_weather',
           targetHandle: 'in',
           animated: true,
-          style: { stroke: '#38bdf8', strokeWidth: 2.5 },
+          style: { stroke: '#a1a1aa', strokeWidth: 2.5 },
         },
         {
           id: 'e_sport_true',
@@ -179,7 +179,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
           target: 'preset_work_cond',
           targetHandle: 'in',
           animated: true,
-          style: { stroke: '#6366f1', strokeWidth: 2.5 },
+          style: { stroke: '#71717a', strokeWidth: 2.5 },
         },
         {
           id: 'e_work_true',
@@ -204,7 +204,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
   },
   {
     id: 'study_pipeline',
-    title: 'Учеба и Английский: Теория ➔ Практика или Повторение',
+    title: 'Учеба и Английский: ТеорияПрактика или Повторение',
     category: 'Образование',
     description:
       'Последовательная цепочка: сначала время фиксируется в задаче «Изучение теории и лексики», затем через условие (>= 30 мин) переходит либо к написанию эссе (TRUE), либо к повторению карточек (FALSE).',
@@ -278,7 +278,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
           target: 'preset_study_theory',
           targetHandle: 'in',
           animated: true,
-          style: { stroke: '#38bdf8', strokeWidth: 2.5 },
+          style: { stroke: '#a1a1aa', strokeWidth: 2.5 },
         },
         {
           id: 'e_st_2',
@@ -287,7 +287,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
           target: 'preset_study_cond',
           targetHandle: 'in',
           animated: true,
-          style: { stroke: '#6366f1', strokeWidth: 2.5 },
+          style: { stroke: '#71717a', strokeWidth: 2.5 },
         },
         {
           id: 'e_st_true',
@@ -375,7 +375,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
           target: 'preset_wk_weather',
           targetHandle: 'in',
           animated: true,
-          style: { stroke: '#38bdf8', strokeWidth: 2.5 },
+          style: { stroke: '#a1a1aa', strokeWidth: 2.5 },
         },
         {
           id: 'e_wk_true',

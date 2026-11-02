@@ -2,30 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    background-color: #09090b;
+    color: #e4e4e7;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  }
+}
+
 .react-flow__node {
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
 }
 
 .react-flow__handle {
-  width: 12px !important;
-  height: 12px !important;
-  border: 2px solid #0f172a !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 2px !important;
+  border: 1px solid #18181b !important;
+  background-color: #71717a !important;
 }
 
+/* Строгая индикация активной линии без неонового свечения */
 .edge-tick-active path {
-  stroke: #38bdf8 !important;
-  stroke-width: 3px !important;
-  filter: drop-shadow(0 0 6px #38bdf8);
+  stroke: #e4e4e7 !important;
+  stroke-width: 2px !important;
+  filter: none !important;
 }
 
-/* Подсветка выделенных в группу нодов и рамки выделения */
+/* Четкая рамка выделенных узлов без размытого свечения */
 .react-flow__node.selected > div {
-  outline: 2px solid #38bdf8 !important;
-  outline-offset: 2px;
-  box-shadow: 0 0 20px rgba(56, 189, 248, 0.35) !important;
+  outline: 1.5px solid #a1a1aa !important;
+  outline-offset: 1px;
+  box-shadow: none !important;
 }
 
 .react-flow__selection {
-  background: rgba(56, 189, 248, 0.12) !important;
-  border: 1px dashed #38bdf8 !important;
+  background: rgba(161, 161, 170, 0.08) !important;
+  border: 1px solid #71717a !important;
+}
+
+.react-flow__controls {
+  border: 1px solid #27272a !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: #121215 !important;
+  border-bottom: 1px solid #27272a !important;
+  fill: #a1a1aa !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #18181b !important;
+  fill: #f4f4f5 !important;
+}
+
+.react-flow__minimap {
+  background-color: #121215 !important;
+  border: 1px solid #27272a !important;
+  border-radius: 4px !important;
 }
