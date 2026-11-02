@@ -9,16 +9,18 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   Connection,
   Edge,
   Node,
+  Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
   Plus,
   Trash2,
   Play,
-  Repeat,
+  Pause,
   ListChecks,
   CheckSquare,
   Clock,
@@ -31,12 +33,19 @@ import {
   CheckCircle2,
   CircleDot,
   FolderKanban,
+  Zap,
 } from 'lucide-react';
 import { TaskNode, TimeNode, ConditionNode, WeatherNode, NodeCallbacks } from './CustomNodes';
 
 interface User {
   id: string;
   login: string;
+}
+
+interface ScenarioRuntimeState {
+  isRunning: boolean;
+  intervalSeconds: number;
+  remainingSeconds: number;
 }
 
 interface ScenarioItem {
@@ -46,6 +55,9 @@ interface ScenarioItem {
   graph_data?: {
     nodes: Node[];
     edges: Edge[];
+    viewport?: Viewport;
+    isRunning?: boolean;
+    intervalSeconds?: number;
   };
 }
 
@@ -77,13 +89,21 @@ const nodeTypes = {
   weatherNode: WeatherNode,
 };
 
-export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [loginInput, setLoginInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [authError, setAuthError] = useState('');
+function formatCountdown(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const mins = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+}
+
+function OrganizerWorkspace({
+  user,
+  onLogout,
+}: {
+  user: User;
+  onLogout: () => void;
+}) {
+  const { screenToFlowPosition, setViewport, getViewport } = useReactFlow();
 
   // Сценарии и граф
   const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
@@ -95,11 +115,11 @@ export default function App() {
   const isLoadedRef = useRef(false);
   const saveTimerRef = useRef<any>(null);
 
-  // Режим тиканья слева направо
-  const [autoTick, setAutoTick] = useState(false);
-  const [tickLog, setTickLog] = useState<string>('Готов к запуску тика слева направо');
+  // Состояние таймеров и запуска по каждому сценарию (отображается слева в списке сценариев)
+  const [scenarioTimers, setScenarioTimers] = useState<Record<string, ScenarioRuntimeState>>({});
+  const [tickLog, setTickLog] = useState<string>('Готов к запуску сценария');
 
-  // Модальное окно / вкладка отчетов органайзера
+  // Вкладка: канвас или таблицы задач
   const [activeTab, setActiveTab] = useState<'canvas' | 'organizer'>('canvas');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntryItem[]>([]);
@@ -111,24 +131,14 @@ export default function App() {
     entries: TimeEntryItem[];
   } | null>(null);
 
-  // Поля создания / добавления времени в разделе органайзера
+  // Поля создания / редактирования задач
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDate, setNewTaskDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [newTaskMinutes, setNewTaskMinutes] = useState(30);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
 
-  // Проверка текущей сессии
-  useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.user) setUser(data.user);
-      })
-      .finally(() => setAuthLoading(false));
-  }, []);
-
-  // Загрузка данных органайзера (задачи и все записи)
+  // Загрузка задач и записей
   const fetchOrganizerData = useCallback(async () => {
     const [tasksRes, entriesRes] = await Promise.all([
       fetch('/api/tasks', { credentials: 'include' }),
@@ -137,7 +147,6 @@ export default function App() {
     if (tasksRes.ok) {
       const tData = await tasksRes.json();
       setTasks(tData.tasks || []);
-      // Обновляем суммарные минуты на нодах задач на канвасе
       setNodes((prev) =>
         prev.map((n) => {
           if (n.type !== 'taskNode') return n;
@@ -161,7 +170,7 @@ export default function App() {
     }
   }, [setNodes]);
 
-  // Обновление данных внутри конкретного нода
+  // Обновление полей внутри нода
   const onUpdateNodeData = useCallback(
     (nodeId: string, patch: Record<string, any>) => {
       setNodes((nds) =>
@@ -172,22 +181,24 @@ export default function App() {
     [setNodes]
   );
 
-  // Запись времени из нода задачи или при тике графа
+  // Запись времени из нода задачи
   const onLogTimeFromNode = useCallback(
     async (
       nodeId: string,
       durationMinutes: number,
       entryDate: string,
       title?: string,
-      status?: 'in_progress' | 'completed'
+      status?: 'in_progress' | 'completed',
+      explicitScenarioId?: string
     ) => {
-      if (!activeScenarioId) return;
+      const targetScenarioId = explicitScenarioId || activeScenarioId;
+      if (!targetScenarioId) return;
       const res = await fetch('/api/time-entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          scenario_id: activeScenarioId,
+          scenario_id: targetScenarioId,
           node_id: nodeId,
           task_title: title,
           task_status: status,
@@ -197,11 +208,13 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setNodes((nds) =>
-          nds.map((n) =>
-            n.id === nodeId ? { ...n, data: { ...n.data, totalMinutes: data.total_minutes } } : n
-          )
-        );
+        if (targetScenarioId === activeScenarioId) {
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === nodeId ? { ...n, data: { ...n.data, totalMinutes: data.total_minutes } } : n
+            )
+          );
+        }
         fetchOrganizerData();
         setTickLog(`Записано +${durationMinutes} мин в задачу «${title || 'Задача'}» (${entryDate})`);
       }
@@ -214,7 +227,6 @@ export default function App() {
     [onUpdateNodeData, onLogTimeFromNode]
   );
 
-  // Прокидываем callbacks во все ноды
   const nodesWithCallbacks = useMemo(
     () =>
       nodes.map((n) => ({
@@ -224,48 +236,88 @@ export default function App() {
     [nodes, callbacks]
   );
 
-  // Загрузка списка сценариев при входе
+  // Загрузка конкретного сценария
+  const loadScenario = useCallback(
+    async (id: string) => {
+      isLoadedRef.current = false;
+      const res = await fetch(`/api/scenarios/${id}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const sc: ScenarioItem = data.scenario;
+      setActiveScenarioId(sc.id);
+      setScenarioTitle(sc.title);
+
+      const g = sc.graph_data || { nodes: [], edges: [] };
+      const loadedNodes = Array.isArray(g.nodes) ? g.nodes : [];
+      const loadedEdges = Array.isArray(g.edges) ? g.edges : [];
+      setNodes(loadedNodes);
+      setEdges(loadedEdges);
+
+      if (g.viewport && typeof g.viewport.x === 'number') {
+        setViewport(g.viewport, { duration: 150 });
+      } else {
+        setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 150 });
+      }
+
+      setScenarioTimers((prev) => {
+        if (prev[sc.id]) return prev;
+        const intervalSec = Number(g.intervalSeconds) || 15;
+        return {
+          ...prev,
+          [sc.id]: {
+            isRunning: Boolean(g.isRunning),
+            intervalSeconds: intervalSec,
+            remainingSeconds: intervalSec,
+          },
+        };
+      });
+
+      setSaveStatus('saved');
+      setTimeout(() => {
+        isLoadedRef.current = true;
+        fetchOrganizerData();
+      }, 150);
+    },
+    [fetchOrganizerData, setEdges, setNodes, setViewport]
+  );
+
+  // Загрузка списка всех сценариев при старте
   useEffect(() => {
-    if (!user) return;
     fetch('/api/scenarios', { credentials: 'include' })
       .then((r) => r.json())
-      .then((data) => {
+      .then(async (data) => {
         const list: ScenarioItem[] = data.scenarios || [];
         setScenarios(list);
+
+        // Инициализируем таймеры для всех сценариев
+        const initialTimers: Record<string, ScenarioRuntimeState> = {};
+        for (const item of list) {
+          initialTimers[item.id] = {
+            isRunning: false,
+            intervalSeconds: 15,
+            remainingSeconds: 15,
+          };
+        }
+        setScenarioTimers(initialTimers);
+
         if (list.length > 0) {
           loadScenario(list[0].id);
         }
       });
     fetchOrganizerData();
-  }, [user]);
+  }, [fetchOrganizerData, loadScenario]);
 
-  // Загрузка выбранного сценария
-  const loadScenario = async (id: string) => {
-    isLoadedRef.current = false;
-    const res = await fetch(`/api/scenarios/${id}`, { credentials: 'include' });
-    if (!res.ok) return;
-    const data = await res.json();
-    const sc: ScenarioItem = data.scenario;
-    setActiveScenarioId(sc.id);
-    setScenarioTitle(sc.title);
-    const g = sc.graph_data || { nodes: [], edges: [] };
-    setNodes(Array.isArray(g.nodes) ? g.nodes : []);
-    setEdges(Array.isArray(g.edges) ? g.edges : []);
-    setSaveStatus('saved');
-    setTimeout(() => {
-      isLoadedRef.current = true;
-      fetchOrganizerData();
-    }, 150);
-  };
+  // Автосохранение графа (позиции, размеры, связи, viewport и состояние таймера)
+  const triggerSave = useCallback(() => {
+    setSaveStatus('unsaved');
+  }, []);
 
-  // Автосохранение графа в JSON на сервере при любом действии пользователя
   useEffect(() => {
-    if (!user || !activeScenarioId || !isLoadedRef.current) return;
+    if (!activeScenarioId || !isLoadedRef.current) return;
     setSaveStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     saveTimerRef.current = setTimeout(async () => {
-      // Очищаем служебные callbacks перед сериализацией в JSON
       const serializedNodes = nodes.map((n) => {
         const { callbacks: _cb, isTicked: _tk, ...cleanData } = (n.data || {}) as any;
         return {
@@ -277,11 +329,17 @@ export default function App() {
         };
       });
 
+      const timerState = scenarioTimers[activeScenarioId];
+      const currentViewport = getViewport();
+
       const graphPayload = {
         title: scenarioTitle,
         graph_data: {
           nodes: serializedNodes,
           edges,
+          viewport: currentViewport,
+          isRunning: timerState?.isRunning || false,
+          intervalSeconds: timerState?.intervalSeconds || 15,
         },
       };
 
@@ -299,12 +357,20 @@ export default function App() {
         );
         fetchOrganizerData();
       }
-    }, 400);
+    }, 450);
 
     return () => clearTimeout(saveTimerRef.current);
-  }, [nodes, edges, scenarioTitle, activeScenarioId, user]);
+  }, [
+    nodes,
+    edges,
+    scenarioTitle,
+    activeScenarioId,
+    scenarioTimers,
+    getViewport,
+    fetchOrganizerData,
+  ]);
 
-  // Соединение нодов линией
+  // Соединение нодов
   const onConnect = useCallback(
     (params: Connection) => {
       setEdges((eds) =>
@@ -322,7 +388,7 @@ export default function App() {
     [setEdges]
   );
 
-  // Drag & Drop новых нодов из правой палитры на канвас
+  // Drag & Drop из правой палитры ТОЧНО в координаты курсора на холсте
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.effectAllowed = 'move';
@@ -339,14 +405,20 @@ export default function App() {
       const type = event.dataTransfer.getData('application/reactflow');
       if (!type) return;
 
-      const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      // Переводим экранные координаты курсора в координаты внутри ReactFlow (с учетом зума и панорамирования)
+      const flowPos = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      // Центрируем нод относительно курсора
       const position = {
-        x: event.clientX - bounds.left - 110,
-        y: event.clientY - bounds.top - 60,
+        x: Math.round(flowPos.x - 115),
+        y: Math.round(flowPos.y - 45),
       };
 
       const today = new Date().toISOString().slice(0, 10);
-      const newId = `node_${Date.now()}`;
+      const newId = `node_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
       const defaultDataByType: Record<string, any> = {
         taskNode: {
@@ -385,17 +457,17 @@ export default function App() {
       setNodes((nds) => [...nds, newNode]);
       setSaveStatus('unsaved');
     },
-    [setNodes]
+    [screenToFlowPosition, setNodes]
   );
 
-  // ДВИЖОК ТИКАНЬЯ ГРАФА СЛЕВА НАПРАВО
+  // Движок прохода тика слева направо
   const runGraphTickLeftToRight = useCallback(async () => {
-    if (nodes.length === 0) return;
+    if (nodes.length === 0) {
+      setTickLog('На канвасе пока нет нодов для тика');
+      return;
+    }
 
-    // Сортируем ноды по координате X слева направо
     const sorted = [...nodes].sort((a, b) => a.position.x - b.position.x);
-
-    // Определяем корни (ноды без входящих связей)
     const incomingCount = new Map<string, number>();
     nodes.forEach((n) => incomingCount.set(n.id, 0));
     edges.forEach((e) => incomingCount.set(e.target, (incomingCount.get(e.target) || 0) + 1));
@@ -404,7 +476,6 @@ export default function App() {
     const carriedPayload = new Map<string, { minutes: number; date: string }>();
     const today = new Date().toISOString().slice(0, 10);
 
-    // Все стартовые левые ноды активируются в начале тика
     for (const n of sorted) {
       if ((incomingCount.get(n.id) || 0) === 0) {
         activeNodeIds.add(n.id);
@@ -491,7 +562,6 @@ export default function App() {
       }
     }
 
-    // Подсвечиваем активные ноды на 900 мс
     setNodes((nds) =>
       nds.map((n) => ({
         ...n,
@@ -513,17 +583,91 @@ export default function App() {
     }, 900);
 
     setTickLog(
-      `Тик прошел слева направо: активно нодов ${activeNodeIds.size}, обновлено задач: ${loggedTasksCount}`
+      `Событие выполнено слева направо: активно нодов ${activeNodeIds.size}, задач записано: ${loggedTasksCount}`
     );
   }, [nodes, edges, onLogTimeFromNode, setNodes]);
 
+  const runTickRef = useRef(runGraphTickLeftToRight);
   useEffect(() => {
-    if (!autoTick) return;
+    runTickRef.current = runGraphTickLeftToRight;
+  }, [runGraphTickLeftToRight]);
+
+  // Ежесекундный таймер обратного отсчета для всех запущенных сценариев в левом меню
+  useEffect(() => {
     const timer = setInterval(() => {
-      runGraphTickLeftToRight();
-    }, 5000);
+      setScenarioTimers((prev) => {
+        let changed = false;
+        const next: Record<string, ScenarioRuntimeState> = { ...prev };
+
+        for (const [scId, st] of Object.entries(prev)) {
+          if (!st.isRunning) continue;
+          changed = true;
+          if (st.remainingSeconds <= 1) {
+            // Если это активный открытый сценарий — запускаем проход графа слева направо
+            if (scId === activeScenarioId) {
+              runTickRef.current();
+            }
+            next[scId] = {
+              ...st,
+              remainingSeconds: st.intervalSeconds,
+            };
+          } else {
+            next[scId] = {
+              ...st,
+              remainingSeconds: st.remainingSeconds - 1,
+            };
+          }
+        }
+
+        return changed ? next : prev;
+      });
+    }, 1000);
+
     return () => clearInterval(timer);
-  }, [autoTick, runGraphTickLeftToRight]);
+  }, [activeScenarioId]);
+
+  // Переключение запуска/остановки сценария и его таймера
+  const toggleScenarioRunning = (scId: string) => {
+    setScenarioTimers((prev) => {
+      const current = prev[scId] || {
+        isRunning: false,
+        intervalSeconds: 15,
+        remainingSeconds: 15,
+      };
+      const nextRunning = !current.isRunning;
+      return {
+        ...prev,
+        [scId]: {
+          ...current,
+          isRunning: nextRunning,
+          remainingSeconds: nextRunning ? current.intervalSeconds : current.remainingSeconds,
+        },
+      };
+    });
+    setSaveStatus('unsaved');
+  };
+
+  // Изменение интервала до следующего события (в секундах) для активного сценария
+  const updateActiveScenarioInterval = (seconds: number) => {
+    if (!activeScenarioId) return;
+    const clamped = Math.max(3, Math.min(3600, seconds));
+    setScenarioTimers((prev) => {
+      const current = prev[activeScenarioId] || {
+        isRunning: false,
+        intervalSeconds: clamped,
+        remainingSeconds: clamped,
+      };
+      return {
+        ...prev,
+        [activeScenarioId]: {
+          ...current,
+          intervalSeconds: clamped,
+          remainingSeconds: clamped,
+        },
+      };
+    });
+    setSaveStatus('unsaved');
+  };
 
   // Создание нового сценария
   const handleCreateScenario = async () => {
@@ -535,13 +679,17 @@ export default function App() {
     });
     if (res.ok) {
       const data = await res.json();
-      setScenarios((prev) => [data.scenario, ...prev]);
-      loadScenario(data.scenario.id);
+      const created: ScenarioItem = data.scenario;
+      setScenarios((prev) => [created, ...prev]);
+      setScenarioTimers((prev) => ({
+        ...prev,
+        [created.id]: { isRunning: false, intervalSeconds: 15, remainingSeconds: 15 },
+      }));
+      loadScenario(created.id);
       setActiveTab('canvas');
     }
   };
 
-  // Удаление сценария
   const handleDeleteScenario = async (id: string) => {
     if (scenarios.length <= 1) return;
     await fetch(`/api/scenarios/${id}`, { method: 'DELETE', credentials: 'include' });
@@ -552,7 +700,6 @@ export default function App() {
     }
   };
 
-  // Просмотр дат и суммарного времени по выбранной задаче
   const openTaskDetails = async (taskId: string) => {
     const res = await fetch(`/api/tasks/${taskId}`, { credentials: 'include' });
     if (res.ok) {
@@ -561,7 +708,6 @@ export default function App() {
     }
   };
 
-  // Добавление задачи / записи времени из панели органайзера
   const handleCreateTaskManual = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
@@ -581,7 +727,6 @@ export default function App() {
     }
   };
 
-  // Изменение статуса задачи (в работе / выполненная)
   const handleToggleTaskStatus = async (task: TaskSummary) => {
     const nextStatus = task.status === 'in_progress' ? 'completed' : 'in_progress';
     await fetch(`/api/tasks/${task.id}`, {
@@ -596,7 +741,6 @@ export default function App() {
     }
   };
 
-  // Сохранение отредактированного названия задачи
   const handleSaveTaskTitle = async (taskId: string) => {
     if (!editingTaskTitle.trim()) return;
     await fetch(`/api/tasks/${taskId}`, {
@@ -612,14 +756,12 @@ export default function App() {
     }
   };
 
-  // Удаление задачи
   const handleDeleteTask = async (taskId: string) => {
     await fetch(`/api/tasks/${taskId}`, { method: 'DELETE', credentials: 'include' });
     if (selectedTaskDetail?.id === taskId) setSelectedTaskDetail(null);
     fetchOrganizerData();
   };
 
-  // Добавление новой записи времени к существующей задаче
   const handleAddEntryToSelectedTask = async () => {
     if (!selectedTaskDetail) return;
     await fetch('/api/time-entries', {
@@ -636,7 +778,715 @@ export default function App() {
     fetchOrganizerData();
   };
 
-  // Вход / Регистрация
+  const tasksInProgress = tasks.filter((t) => t.status === 'in_progress');
+  const tasksCompleted = tasks.filter((t) => t.status === 'completed');
+  const activeTimer = activeScenarioId ? scenarioTimers[activeScenarioId] : undefined;
+
+  return (
+    <div className="h-screen w-screen flex overflow-hidden bg-[#0e1015] text-slate-100">
+      {/* ЛЕВОЕ МЕНЮ: Список сценариев с индикатором запуска и таймером до следующего события */}
+      <aside className="w-72 bg-[#151821] border-r border-slate-800 flex flex-col justify-between shrink-0">
+        <div className="p-4 space-y-4 overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <div className="font-bold text-sm tracking-wide text-white flex items-center gap-2">
+              <FolderKanban className="w-4 h-4 text-indigo-400" />
+              Органайзер времени
+            </div>
+          </div>
+
+          {/* Переключатель: Нод-Канвас / Таблицы задач */}
+          <div className="grid grid-cols-2 gap-1 bg-[#0e1015] p-1 rounded-lg border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setActiveTab('canvas')}
+              className={`py-1.5 px-2 rounded text-xs font-semibold transition ${
+                activeTab === 'canvas'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Нод-Канвас
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('organizer');
+                fetchOrganizerData();
+              }}
+              className={`py-1.5 px-2 rounded text-xs font-semibold transition flex items-center justify-center gap-1 ${
+                activeTab === 'organizer'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              Задачи ({tasks.length})
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCreateScenario}
+            className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow"
+          >
+            <Plus className="w-4 h-4" />
+            Новый сценарий
+          </button>
+
+          {/* Список сценариев с индикатором состояния и обратным отсчетом */}
+          <div className="space-y-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1">
+              Мои сценарии
+            </div>
+            {scenarios.map((sc) => {
+              const tState = scenarioTimers[sc.id] || {
+                isRunning: false,
+                intervalSeconds: 15,
+                remainingSeconds: 15,
+              };
+              const isSelected = activeScenarioId === sc.id;
+
+              return (
+                <div
+                  key={sc.id}
+                  onClick={() => {
+                    loadScenario(sc.id);
+                    setActiveTab('canvas');
+                  }}
+                  className={`group p-2.5 rounded-xl text-xs cursor-pointer transition border ${
+                    isSelected
+                      ? 'bg-indigo-600/15 border-indigo-500/60 text-white'
+                      : 'bg-[#10131b] border-slate-800/80 text-slate-300 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {/* Индикатор: запущен или остановлен */}
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                          tState.isRunning
+                            ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]'
+                            : 'bg-slate-600'
+                        }`}
+                        title={tState.isRunning ? 'Сценарий запущен' : 'Сценарий остановлен'}
+                      />
+                      <span className="truncate font-semibold">{sc.title}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Кнопка запуска/паузы прямо в списке сценариев */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleScenarioRunning(sc.id);
+                        }}
+                        className={`p-1 rounded transition ${
+                          tState.isRunning
+                            ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                        title={
+                          tState.isRunning ? 'Остановить сценарий' : 'Запустить таймер сценария'
+                        }
+                      >
+                        {tState.isRunning ? (
+                          <Pause className="w-3 h-3" />
+                        ) : (
+                          <Play className="w-3 h-3" />
+                        )}
+                      </button>
+
+                      {scenarios.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteScenario(sc.id);
+                          }}
+                          className="p-1 rounded text-slate-500 hover:text-rose-400 transition"
+                          title="Удалить сценарий"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Строка статуса и таймера до следующего события */}
+                  <div className="mt-1.5 flex items-center justify-between text-[11px] pl-4">
+                    <span
+                      className={
+                        tState.isRunning ? 'text-emerald-400 font-medium' : 'text-slate-500'
+                      }
+                    >
+                      {tState.isRunning ? 'Запущен' : 'Остановлен'}
+                    </span>
+
+                    {tState.isRunning ? (
+                      <span className="font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-700/50 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5" />
+                        След. событие: {formatCountdown(tState.remainingSeconds)}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-500">
+                        Цикл: {tState.intervalSeconds}с
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Нижняя панель статуса сохранения и выхода */}
+        <div className="p-4 border-t border-slate-800 space-y-2 bg-[#11131a]">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-400 flex items-center gap-1.5">
+              <Save className="w-3.5 h-3.5 text-emerald-400" />
+              JSON графа:
+            </span>
+            <span
+              className={`font-semibold ${
+                saveStatus === 'saved'
+                  ? 'text-emerald-400'
+                  : saveStatus === 'saving'
+                  ? 'text-amber-400'
+                  : 'text-slate-400'
+              }`}
+            >
+              {saveStatus === 'saved'
+                ? 'Сохранено в БД'
+                : saveStatus === 'saving'
+                ? 'Сохранение...'
+                : 'Изменено'}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+            <span className="font-medium text-slate-200 truncate">👤 {user.login}</span>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="text-slate-400 hover:text-rose-400 flex items-center gap-1"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Выйти
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ЦЕНТРАЛЬНАЯ ОБЛАСТЬ */}
+      {activeTab === 'canvas' ? (
+        <div className="flex-1 flex flex-col h-full relative">
+          {/* Верхний тулбар */}
+          <header className="h-14 bg-[#151821] border-b border-slate-800 px-4 flex items-center justify-between gap-4 z-10">
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={scenarioTitle}
+                onChange={(e) => {
+                  setScenarioTitle(e.target.value);
+                  setSaveStatus('unsaved');
+                }}
+                className="bg-[#0e1015] border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-semibold text-white focus:outline-none focus:border-indigo-500"
+              />
+              <span className="text-xs text-slate-400 hidden xl:inline">{tickLog}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Настройка периода таймера до следующего события */}
+              {activeScenarioId && activeTimer && (
+                <div className="flex items-center gap-1.5 bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+                  <span className="text-slate-400">Период тика (сек):</span>
+                  <input
+                    type="number"
+                    min={3}
+                    max={3600}
+                    value={activeTimer.intervalSeconds}
+                    onChange={(e) => updateActiveScenarioInterval(Number(e.target.value) || 15)}
+                    className="w-14 bg-transparent text-white font-mono font-semibold text-center focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Разовый тик */}
+              <button
+                type="button"
+                onClick={runGraphTickLeftToRight}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Разовый тик
+              </button>
+
+              {/* Запуск / Остановка таймера текущего сценария */}
+              {activeScenarioId && activeTimer && (
+                <button
+                  type="button"
+                  onClick={() => toggleScenarioRunning(activeScenarioId)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition ${
+                    activeTimer.isRunning
+                      ? 'bg-emerald-600/20 border-emerald-400 text-emerald-200'
+                      : 'bg-[#0e1015] border-slate-700 text-slate-300 hover:border-slate-500'
+                  }`}
+                >
+                  {activeTimer.isRunning ? (
+                    <>
+                      <Pause className="w-3.5 h-3.5" />
+                      Запущен ({formatCountdown(activeTimer.remainingSeconds)})
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5" />
+                      Запустить сценарий
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </header>
+
+          {/* Канвас с сеткой и правая палитра */}
+          <div className="flex-1 flex relative">
+            <div className="flex-1 h-full" onDrop={onDrop} onDragOver={onDragOver}>
+              <ReactFlow
+                nodes={nodesWithCallbacks}
+                edges={edges}
+                onNodesChange={(changes) => {
+                  onNodesChange(changes);
+                  triggerSave();
+                }}
+                onEdgesChange={(changes) => {
+                  onEdgesChange(changes);
+                  triggerSave();
+                }}
+                onMoveEnd={() => triggerSave()}
+                onConnect={onConnect}
+                nodeTypes={nodeTypes}
+                deleteKeyCode={['Backspace', 'Delete']}
+                className="bg-[#0f1219]"
+              >
+                <Background variant={BackgroundVariant.Lines} gap={28} size={1} color="#1e2433" />
+                <Controls className="!bg-[#151821] !border-slate-700 !text-white" />
+                <MiniMap
+                  nodeColor="#4f46e5"
+                  maskColor="rgba(15, 18, 25, 0.75)"
+                  className="!bg-[#151821] !border !border-slate-700"
+                />
+              </ReactFlow>
+            </div>
+
+            {/* ПРАВАЯ ПАЛИТРА ЭЛЕМЕНТОВ */}
+            <aside className="w-72 bg-[#151821] border-l border-slate-800 p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Палитра нодов
+                  </h2>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Перетащите блок в любое место сетки канваса
+                  </p>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'taskNode')}
+                    className="p-3 rounded-xl bg-[#1c202c] border border-indigo-500/50 hover:border-indigo-400 cursor-grab active:cursor-grabbing transition shadow"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-indigo-300">
+                      <CheckSquare className="w-4 h-4" />
+                      Квадратный нод задачи
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Название, статус («в работе» / «выполненная»), дата и затраченное время.
+                    </p>
+                  </div>
+
+                  <div
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'timeNode')}
+                    className="p-3 rounded-xl bg-[#1c202c] border border-cyan-500/50 hover:border-cyan-400 cursor-grab active:cursor-grabbing transition shadow"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
+                      <Clock className="w-4 h-4" />
+                      Нод времени / таймера
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Задает дату, минуты или считает секундомером и передает время в задачу.
+                    </p>
+                  </div>
+
+                  <div
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'conditionNode')}
+                    className="p-3 rounded-xl bg-[#1c202c] border border-amber-500/50 hover:border-amber-400 cursor-grab active:cursor-grabbing transition shadow"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                      <GitBranch className="w-4 h-4" />
+                      Нод условия (1 вх / 2 вых)
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Проверяет условие и направляет поток в выход TRUE или FALSE.
+                    </p>
+                  </div>
+
+                  <div
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'weatherNode')}
+                    className="p-3 rounded-xl bg-[#1c202c] border border-purple-500/50 hover:border-purple-400 cursor-grab active:cursor-grabbing transition shadow"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
+                      <CloudSun className="w-4 h-4" />
+                      Погодный нод (TRUE / FALSE)
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Регион, температура и погода. Из него выходят 2 порта: TRUE и FALSE.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <div className="font-semibold text-slate-200">Подсказка:</div>
+                <p>1. Перетаскивайте блоки из палитры в любую точку сетки.</p>
+                <p>
+                  2. Запустите сценарий кнопкой «Запустить сценарий» или иконкой Play в списке
+                  слева — таймер начнет отсчет до следующего события.
+                </p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      ) : (
+        /* ВКЛАДКА ОРГАНАЙЗЕРА */
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-white">
+                Сводка задач и записей времени в органайзере
+              </h1>
+              <p className="text-xs text-slate-400">
+                Просмотр задач «в работе» и «выполненных», редактирование, удаление и детализация по
+                датам
+              </p>
+            </div>
+
+            <form
+              onSubmit={handleCreateTaskManual}
+              className="flex flex-wrap items-center gap-2 bg-[#151821] p-2.5 rounded-xl border border-slate-800"
+            >
+              <input
+                type="text"
+                placeholder="Название задачи..."
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                className="bg-[#0e1015] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+              />
+              <input
+                type="date"
+                value={newTaskDate}
+                onChange={(e) => setNewTaskDate(e.target.value)}
+                className="bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+              />
+              <input
+                type="number"
+                min={1}
+                value={newTaskMinutes}
+                onChange={(e) => setNewTaskMinutes(Number(e.target.value) || 0)}
+                className="w-20 bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+              >
+                + Добавить задачу
+              </button>
+            </form>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Список задач В РАБОТЕ */}
+            <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-sm font-bold text-indigo-300 flex items-center gap-2">
+                  <CircleDot className="w-4 h-4" />
+                  Задачи в работе ({tasksInProgress.length})
+                </span>
+                <span className="text-xs text-slate-400">
+                  Всего:{' '}
+                  {tasksInProgress.reduce((acc, t) => acc + Number(t.total_minutes || 0), 0)} мин
+                </span>
+              </div>
+
+              {tasksInProgress.length === 0 ? (
+                <p className="text-xs text-slate-500 py-4 text-center">Нет задач в работе</p>
+              ) : (
+                <div className="space-y-2">
+                  {tasksInProgress.map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        {editingTaskId === t.id ? (
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              value={editingTaskTitle}
+                              onChange={(e) => setEditingTaskTitle(e.target.value)}
+                              className="bg-[#151821] border border-indigo-500 rounded px-2 py-1 text-xs text-white w-full"
+                            />
+                            <button
+                              onClick={() => handleSaveTaskTitle(t.id)}
+                              className="px-2 py-1 bg-emerald-600 rounded text-xs"
+                            >
+                              ОК
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => openTaskDetails(t.id)}
+                            className="font-semibold text-sm text-white hover:text-indigo-300 cursor-pointer truncate"
+                          >
+                            {t.title}
+                          </div>
+                        )}
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Суммарное время: <b className="text-indigo-300">{t.total_minutes} мин</b>{' '}
+                          • Записей: {t.entries_count}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => openTaskDetails(t.id)}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200"
+                        >
+                          Даты
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingTaskId(t.id);
+                            setEditingTaskTitle(t.title);
+                          }}
+                          className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleToggleTaskStatus(t)}
+                          className="px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 text-[11px]"
+                        >
+                          Завершить
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTask(t.id)}
+                          className="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/30 text-rose-400"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Список ВЫПОЛНЕННЫХ задач */}
+            <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-sm font-bold text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Выполненные задачи ({tasksCompleted.length})
+                </span>
+                <span className="text-xs text-slate-400">
+                  Всего:{' '}
+                  {tasksCompleted.reduce((acc, t) => acc + Number(t.total_minutes || 0), 0)} мин
+                </span>
+              </div>
+
+              {tasksCompleted.length === 0 ? (
+                <p className="text-xs text-slate-500 py-4 text-center">Нет выполненных задач</p>
+              ) : (
+                <div className="space-y-2">
+                  {tasksCompleted.map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div
+                          onClick={() => openTaskDetails(t.id)}
+                          className="font-semibold text-sm text-emerald-200 hover:underline cursor-pointer truncate"
+                        >
+                          {t.title}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Суммарное время: <b className="text-emerald-300">{t.total_minutes} мин</b>{' '}
+                          • Записей: {t.entries_count}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => openTaskDetails(t.id)}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200"
+                        >
+                          Даты
+                        </button>
+                        <button
+                          onClick={() => handleToggleTaskStatus(t)}
+                          className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 text-[11px]"
+                        >
+                          Вернуть в работу
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTask(t.id)}
+                          className="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/30 text-rose-400"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {selectedTaskDetail && (
+            <div className="bg-[#151821] border-2 border-indigo-500/60 rounded-2xl p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div>
+                  <h2 className="text-base font-bold text-white">
+                    Детализация задачи: «{selectedTaskDetail.title}»
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Статус:{' '}
+                    {selectedTaskDetail.status === 'completed' ? 'Выполненная' : 'В работе'} •
+                    Суммарное затраченное время:{' '}
+                    <b className="text-indigo-300">{selectedTaskDetail.total_minutes} мин</b>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={newTaskDate}
+                    onChange={(e) => setNewTaskDate(e.target.value)}
+                    className="bg-[#0e1015] border border-slate-700 rounded px-2 py-1 text-xs"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    value={newTaskMinutes}
+                    onChange={(e) => setNewTaskMinutes(Number(e.target.value) || 1)}
+                    className="w-20 bg-[#0e1015] border border-slate-700 rounded px-2 py-1 text-xs"
+                  />
+                  <button
+                    onClick={handleAddEntryToSelectedTask}
+                    className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                  >
+                    + Записать время к задаче
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {selectedTaskDetail.entries.length === 0 ? (
+                  <div className="text-xs text-slate-500 col-span-3">
+                    Записей времени по этой задаче пока нет.
+                  </div>
+                ) : (
+                  selectedTaskDetail.entries.map((en) => (
+                    <div
+                      key={en.id}
+                      className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between text-xs"
+                    >
+                      <span className="flex items-center gap-1.5 text-slate-300">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                        {en.entry_date}
+                      </span>
+                      <span className="font-bold text-emerald-400">
+                        +{en.duration_minutes} мин
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
+            <h2 className="text-sm font-bold text-slate-200">
+              Все записи в органайзере ({allEntries.length})
+            </h2>
+            {allEntries.length === 0 ? (
+              <p className="text-xs text-slate-500 py-4 text-center">Записей пока нет</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400">
+                      <th className="py-2 px-3">Дата выполнения</th>
+                      <th className="py-2 px-3">Задача</th>
+                      <th className="py-2 px-3">Статус задачи</th>
+                      <th className="py-2 px-3">Затраченное время</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allEntries.map((item) => (
+                      <tr key={item.id} className="border-b border-slate-800/60">
+                        <td className="py-2 px-3 font-mono text-slate-300">{item.entry_date}</td>
+                        <td className="py-2 px-3 font-medium text-white">{item.task_title}</td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              item.task_status === 'completed'
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-indigo-500/20 text-indigo-300'
+                            }`}
+                          >
+                            {item.task_status === 'completed' ? 'Выполненная' : 'В работе'}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 font-bold text-emerald-400">
+                          {item.duration_minutes} мин
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [loginInput, setLoginInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user) setUser(data.user);
+      })
+      .finally(() => setAuthLoading(false));
+  }, []);
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -668,7 +1518,6 @@ export default function App() {
     );
   }
 
-  // Экран авторизации по логину и паролю
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0d0f14] p-4">
@@ -718,7 +1567,7 @@ export default function App() {
                 required
                 value={loginInput}
                 onChange={(e) => setLoginInput(e.target.value)}
-                placeholder="例如: admin"
+                placeholder="Например: admin"
                 className="w-full bg-[#0d0f14] border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
               />
             </div>
@@ -747,620 +1596,9 @@ export default function App() {
     );
   }
 
-  const tasksInProgress = tasks.filter((t) => t.status === 'in_progress');
-  const tasksCompleted = tasks.filter((t) => t.status === 'completed');
-
   return (
     <ReactFlowProvider>
-      <div className="h-screen w-screen flex overflow-hidden bg-[#0e1015] text-slate-100">
-        {/* ЛЕВОЕ МЕНЮ: Список сценариев и переключение вкладок */}
-        <aside className="w-64 bg-[#151821] border-r border-slate-800 flex flex-col justify-between shrink-0">
-          <div className="p-4 space-y-4 overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <div className="font-bold text-sm tracking-wide text-white flex items-center gap-2">
-                <FolderKanban className="w-4 h-4 text-indigo-400" />
-                Органайзер времени
-              </div>
-            </div>
-
-            {/* Переключатель режима: Нодовый канвас / Отчеты и списки задач */}
-            <div className="grid grid-cols-2 gap-1 bg-[#0e1015] p-1 rounded-lg border border-slate-800">
-              <button
-                type="button"
-                onClick={() => setActiveTab('canvas')}
-                className={`py-1.5 px-2 rounded text-xs font-semibold transition ${
-                  activeTab === 'canvas'
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Нод-Канвас
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('organizer');
-                  fetchOrganizerData();
-                }}
-                className={`py-1.5 px-2 rounded text-xs font-semibold transition flex items-center justify-center gap-1 ${
-                  activeTab === 'organizer'
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <ListChecks className="w-3.5 h-3.5" />
-                Задачи ({tasks.length})
-              </button>
-            </div>
-
-            {/* Кнопка создания нового сценария */}
-            <button
-              type="button"
-              onClick={handleCreateScenario}
-              className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow"
-            >
-              <Plus className="w-4 h-4" />
-              Новый сценарий
-            </button>
-
-            {/* Список сценариев пользователя */}
-            <div className="space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1">
-                Мои сценарии
-              </div>
-              {scenarios.map((sc) => (
-                <div
-                  key={sc.id}
-                  onClick={() => {
-                    loadScenario(sc.id);
-                    setActiveTab('canvas');
-                  }}
-                  className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition ${
-                    activeScenarioId === sc.id
-                      ? 'bg-indigo-600/20 border border-indigo-500/50 text-white font-semibold'
-                      : 'text-slate-300 hover:bg-slate-800/60'
-                  }`}
-                >
-                  <span className="truncate">{sc.title}</span>
-                  {scenarios.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteScenario(sc.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 transition"
-                      title="Удалить сценарий"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Нижний блок с пользователем и статусом сохранения JSON */}
-          <div className="p-4 border-t border-slate-800 space-y-2 bg-[#11131a]">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 flex items-center gap-1.5">
-                <Save className="w-3.5 h-3.5 text-emerald-400" />
-                JSON графа:
-              </span>
-              <span
-                className={`font-semibold ${
-                  saveStatus === 'saved'
-                    ? 'text-emerald-400'
-                    : saveStatus === 'saving'
-                    ? 'text-amber-400'
-                    : 'text-slate-400'
-                }`}
-              >
-                {saveStatus === 'saved'
-                  ? 'Сохранено в БД'
-                  : saveStatus === 'saving'
-                  ? 'Сохранение...'
-                  : 'Изменено'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-              <span className="font-medium text-slate-200 truncate">👤 {user.login}</span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="text-slate-400 hover:text-rose-400 flex items-center gap-1"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Выйти
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* ЦЕНТРАЛЬНАЯ ОБЛАСТЬ */}
-        {activeTab === 'canvas' ? (
-          <div className="flex-1 flex flex-col h-full relative">
-            {/* Верхний тулбар сценария и управления тиками слева направо */}
-            <header className="h-14 bg-[#151821] border-b border-slate-800 px-4 flex items-center justify-between gap-4 z-10">
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  value={scenarioTitle}
-                  onChange={(e) => {
-                    setScenarioTitle(e.target.value);
-                    setSaveStatus('unsaved');
-                  }}
-                  className="bg-[#0e1015] border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-semibold text-white focus:outline-none focus:border-indigo-500"
-                />
-                <span className="text-xs text-slate-400 hidden md:inline">{tickLog}</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={runGraphTickLeftToRight}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow"
-                >
-                  <Play className="w-3.5 h-3.5" />
-                  Тик графа (слева ➔ направо)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setAutoTick(!autoTick)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition ${
-                    autoTick
-                      ? 'bg-cyan-600/20 border-cyan-400 text-cyan-200'
-                      : 'bg-[#0e1015] border-slate-700 text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  <Repeat className="w-3.5 h-3.5" />
-                  {autoTick ? 'Авто-тик: ВКЛ (5с)' : 'Авто-тик: ВЫКЛ'}
-                </button>
-              </div>
-            </header>
-
-            {/* Поле канваса с сеткой позади */}
-            <div className="flex-1 flex relative">
-              <div className="flex-1 h-full" onDrop={onDrop} onDragOver={onDragOver}>
-                <ReactFlow
-                  nodes={nodesWithCallbacks}
-                  edges={edges}
-                  onNodesChange={(changes) => {
-                    onNodesChange(changes);
-                    setSaveStatus('unsaved');
-                  }}
-                  onEdgesChange={(changes) => {
-                    onEdgesChange(changes);
-                    setSaveStatus('unsaved');
-                  }}
-                  onConnect={onConnect}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  deleteKeyCode={['Backspace', 'Delete']}
-                  className="bg-[#0f1219]"
-                >
-                  <Background
-                    variant={BackgroundVariant.Lines}
-                    gap={28}
-                    size={1}
-                    color="#1e2433"
-                  />
-                  <Controls className="!bg-[#151821] !border-slate-700 !text-white" />
-                  <MiniMap
-                    nodeColor="#4f46e5"
-                    maskColor="rgba(15, 18, 25, 0.75)"
-                    className="!bg-[#151821] !border !border-slate-700"
-                  />
-                </ReactFlow>
-              </div>
-
-              {/* ПРАВАЯ ПАЛИТРА ЭЛЕМЕНТОВ (Blender / Unreal Blueprints style) */}
-              <aside className="w-72 bg-[#151821] border-l border-slate-800 p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
-                <div className="space-y-4">
-                  <div>
-                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                      Палитра нодов
-                    </h2>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Перетащите блок на сетку канваса слева и соедините порты
-                    </p>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {/* 1. Квадратный нод задачи */}
-                    <div
-                      draggable
-                      onDragStart={(e) => onDragStart(e, 'taskNode')}
-                      className="p-3 rounded-xl bg-[#1c202c] border border-indigo-500/50 hover:border-indigo-400 cursor-grab active:cursor-grabbing transition shadow"
-                    >
-                      <div className="flex items-center gap-2 text-xs font-bold text-indigo-300">
-                        <CheckSquare className="w-4 h-4" />
-                        Квадратный нод задачи
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Название, статус («в работе» / «выполненная»), дата и затраченное время.
-                      </p>
-                    </div>
-
-                    {/* 2. Нод времени / таймера */}
-                    <div
-                      draggable
-                      onDragStart={(e) => onDragStart(e, 'timeNode')}
-                      className="p-3 rounded-xl bg-[#1c202c] border border-cyan-500/50 hover:border-cyan-400 cursor-grab active:cursor-grabbing transition shadow"
-                    >
-                      <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
-                        <Clock className="w-4 h-4" />
-                        Нод времени / таймера
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Задает дату, минуты или считает секундомером и передает время в задачу.
-                      </p>
-                    </div>
-
-                    {/* 3. Нод условия (1 вход, 2 выхода) */}
-                    <div
-                      draggable
-                      onDragStart={(e) => onDragStart(e, 'conditionNode')}
-                      className="p-3 rounded-xl bg-[#1c202c] border border-amber-500/50 hover:border-amber-400 cursor-grab active:cursor-grabbing transition shadow"
-                    >
-                      <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                        <GitBranch className="w-4 h-4" />
-                        Нод условия (1 вх / 2 вых)
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Проверяет условие и направляет поток в выход TRUE или FALSE.
-                      </p>
-                    </div>
-
-                    {/* 4. Погодный нод */}
-                    <div
-                      draggable
-                      onDragStart={(e) => onDragStart(e, 'weatherNode')}
-                      className="p-3 rounded-xl bg-[#1c202c] border border-purple-500/50 hover:border-purple-400 cursor-grab active:cursor-grabbing transition shadow"
-                    >
-                      <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
-                        <CloudSun className="w-4 h-4" />
-                        Погодный нод (TRUE / FALSE)
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Регион, температура и погода. Из него выходят 2 порта: TRUE и FALSE.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                  <div className="font-semibold text-slate-200">Как работает граф:</div>
-                  <p>
-                    1. Вытяните блоки на сетку и соедините их слева направо.
-                  </p>
-                  <p>
-                    2. Нажмите «Тик графа» сверху — сигнал пройдет слева направо через условия и
-                    запишет время в подключенные задачи.
-                  </p>
-                  <p>3. Удалить выбранный нод или связь: клавиша Delete / Backspace.</p>
-                </div>
-              </aside>
-            </div>
-          </div>
-        ) : (
-          /* ВКЛАДКА ОРГАНАЙЗЕРА: Все записи, фильтр по статусам, даты и суммарное время по задаче */
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h1 className="text-xl font-bold text-white">
-                  Сводка задач и записей времени в органайзере
-                </h1>
-                <p className="text-xs text-slate-400">
-                  Просмотр задач «в работе» и «выполненных», редактирование, удаление и детализация по датам
-                </p>
-              </div>
-
-              {/* Быстрое добавление задачи / времени */}
-              <form
-                onSubmit={handleCreateTaskManual}
-                className="flex flex-wrap items-center gap-2 bg-[#151821] p-2.5 rounded-xl border border-slate-800"
-              >
-                <input
-                  type="text"
-                  placeholder="Название задачи..."
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  className="bg-[#0e1015] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
-                />
-                <input
-                  type="date"
-                  value={newTaskDate}
-                  onChange={(e) => setNewTaskDate(e.target.value)}
-                  className="bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  value={newTaskMinutes}
-                  onChange={(e) => setNewTaskMinutes(Number(e.target.value) || 0)}
-                  className="w-20 bg-[#0e1015] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                  title="Затраченное время (мин)"
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
-                >
-                  + Добавить задачу
-                </button>
-              </form>
-            </div>
-
-            {/* Два списка: Задачи В РАБОТЕ и ВЫПОЛНЕННЫЕ задачи с суммарным временем */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Список задач В РАБОТЕ */}
-              <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-sm font-bold text-indigo-300 flex items-center gap-2">
-                    <CircleDot className="w-4 h-4" />
-                    Задачи в работе ({tasksInProgress.length})
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    Всего:{' '}
-                    {tasksInProgress.reduce((acc, t) => acc + Number(t.total_minutes || 0), 0)} мин
-                  </span>
-                </div>
-
-                {tasksInProgress.length === 0 ? (
-                  <p className="text-xs text-slate-500 py-4 text-center">Нет задач в работе</p>
-                ) : (
-                  <div className="space-y-2">
-                    {tasksInProgress.map((t) => (
-                      <div
-                        key={t.id}
-                        className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex-1 min-w-0">
-                          {editingTaskId === t.id ? (
-                            <div className="flex gap-1.5">
-                              <input
-                                type="text"
-                                value={editingTaskTitle}
-                                onChange={(e) => setEditingTaskTitle(e.target.value)}
-                                className="bg-[#151821] border border-indigo-500 rounded px-2 py-1 text-xs text-white w-full"
-                              />
-                              <button
-                                onClick={() => handleSaveTaskTitle(t.id)}
-                                className="px-2 py-1 bg-emerald-600 rounded text-xs"
-                              >
-                                ОК
-                              </button>
-                            </div>
-                          ) : (
-                            <div
-                              onClick={() => openTaskDetails(t.id)}
-                              className="font-semibold text-sm text-white hover:text-indigo-300 cursor-pointer truncate"
-                            >
-                              {t.title}
-                            </div>
-                          )}
-                          <div className="text-[11px] text-slate-400 mt-0.5">
-                            Суммарное время: <b className="text-indigo-300">{t.total_minutes} мин</b>{' '}
-                            • Записей: {t.entries_count}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => openTaskDetails(t.id)}
-                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200"
-                          >
-                            Даты
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingTaskId(t.id);
-                              setEditingTaskTitle(t.title);
-                            }}
-                            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
-                            title="Редактировать"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleTaskStatus(t)}
-                            className="px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 text-[11px]"
-                            title="Пометить выполненной"
-                          >
-                            Завершить
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTask(t.id)}
-                            className="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/30 text-rose-400"
-                            title="Удалить задачу"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Список ВЫПОЛНЕННЫХ задач */}
-              <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-sm font-bold text-emerald-300 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Выполненные задачи ({tasksCompleted.length})
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    Всего:{' '}
-                    {tasksCompleted.reduce((acc, t) => acc + Number(t.total_minutes || 0), 0)} мин
-                  </span>
-                </div>
-
-                {tasksCompleted.length === 0 ? (
-                  <p className="text-xs text-slate-500 py-4 text-center">
-                    Нет выполненных задач
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {tasksCompleted.map((t) => (
-                      <div
-                        key={t.id}
-                        className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div
-                            onClick={() => openTaskDetails(t.id)}
-                            className="font-semibold text-sm text-emerald-200 hover:underline cursor-pointer truncate"
-                          >
-                            {t.title}
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">
-                            Суммарное время:{' '}
-                            <b className="text-emerald-300">{t.total_minutes} мин</b> • Записей:{' '}
-                            {t.entries_count}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => openTaskDetails(t.id)}
-                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200"
-                          >
-                            Даты
-                          </button>
-                          <button
-                            onClick={() => handleToggleTaskStatus(t)}
-                            className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 text-[11px]"
-                          >
-                            Вернуть в работу
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTask(t.id)}
-                            className="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/30 text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Детализация по выбранной задаче: все даты выполнения и суммарное время */}
-            {selectedTaskDetail && (
-              <div className="bg-[#151821] border-2 border-indigo-500/60 rounded-2xl p-5 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                  <div>
-                    <h2 className="text-base font-bold text-white">
-                      Детализация задачи: «{selectedTaskDetail.title}»
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      Статус:{' '}
-                      {selectedTaskDetail.status === 'completed' ? 'Выполненная' : 'В работе'} •
-                      Суммарное затраченное время:{' '}
-                      <b className="text-indigo-300">{selectedTaskDetail.total_minutes} мин</b>
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={newTaskDate}
-                      onChange={(e) => setNewTaskDate(e.target.value)}
-                      className="bg-[#0e1015] border border-slate-700 rounded px-2 py-1 text-xs"
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      value={newTaskMinutes}
-                      onChange={(e) => setNewTaskMinutes(Number(e.target.value) || 1)}
-                      className="w-20 bg-[#0e1015] border border-slate-700 rounded px-2 py-1 text-xs"
-                    />
-                    <button
-                      onClick={handleAddEntryToSelectedTask}
-                      className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
-                    >
-                      + Записать время к задаче
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                  {selectedTaskDetail.entries.length === 0 ? (
-                    <div className="text-xs text-slate-500 col-span-3">
-                      Записей времени по этой задаче пока нет.
-                    </div>
-                  ) : (
-                    selectedTaskDetail.entries.map((en) => (
-                      <div
-                        key={en.id}
-                        className="p-3 rounded-xl bg-[#0e1015] border border-slate-800 flex items-center justify-between text-xs"
-                      >
-                        <span className="flex items-center gap-1.5 text-slate-300">
-                          <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-                          {en.entry_date}
-                        </span>
-                        <span className="font-bold text-emerald-400">
-                          +{en.duration_minutes} мин
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Общий журнал ВСЕХ записей в органайзере */}
-            <div className="bg-[#151821] border border-slate-800 rounded-2xl p-4 space-y-3">
-              <h2 className="text-sm font-bold text-slate-200">
-                Все записи в органайзере ({allEntries.length})
-              </h2>
-              {allEntries.length === 0 ? (
-                <p className="text-xs text-slate-500 py-4 text-center">Записей пока нет</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-400">
-                        <th className="py-2 px-3">Дата выполнения</th>
-                        <th className="py-2 px-3">Задача</th>
-                        <th className="py-2 px-3">Статус задачи</th>
-                        <th className="py-2 px-3">Затраченное время</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allEntries.map((item) => (
-                        <tr key={item.id} className="border-b border-slate-800/60">
-                          <td className="py-2 px-3 font-mono text-slate-300">{item.entry_date}</td>
-                          <td className="py-2 px-3 font-medium text-white">{item.task_title}</td>
-                          <td className="py-2 px-3">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                item.task_status === 'completed'
-                                  ? 'bg-emerald-500/20 text-emerald-300'
-                                  : 'bg-indigo-500/20 text-indigo-300'
-                              }`}
-                            >
-                              {item.task_status === 'completed' ? 'Выполненная' : 'В работе'}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 font-bold text-emerald-400">
-                            {item.duration_minutes} мин
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <OrganizerWorkspace user={user} onLogout={handleLogout} />
     </ReactFlowProvider>
   );
 }
